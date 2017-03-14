@@ -1,0 +1,16 @@
+{
+  "name": "witch-hunt",
+  "version": "1.0.0",
+  "description": "a game to play anywhere",
+  "main": "app.js",
+  "dependencies": {
+    "express": "^4.15.2",
+    "nid": "^0.3.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
