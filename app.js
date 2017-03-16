@@ -5,17 +5,20 @@ var http = require('http').Server(app)
 var io = require('socket.io')(http)
 app.use(express.static('public'))
 
+lobbies: {}
+
 io.sockets.on('connection', function(socket) {
   console.log('a user connected')
 
   socket.on('start-lobby', function(){
     var newLobbyId = nid()
     socket.join(newLobbyId)
-  });
+  })
 
-  socket.on('join-lobby', function(lobbyId){
-    socket.join(lobbyId)
-  });
+  socket.on('join-lobby', function(joinRequest){
+    socket.join(joinRequest.lobbyId)
+    lobbies[joinRequest.lobbyId]['players'].push({'name': joinRequest.name})
+  })
 
 })
 
