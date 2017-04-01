@@ -9,8 +9,17 @@ let lobbies = {}
 
 // change our player key map to an array to send back to web client
 let playerMapToArray = (playerMap) => {
+  let newMap = Object.create(playerMap)
   let playerArray = []
-  for(let key in playerMap){
+  for(let key in newMap){
+    newMap[key]['killVote'] = []
+  }
+  for(let key in newMap){
+    if(newMap[key]['voteFor']){
+      newMap[newMap[key]['voteFor']]['killVote'].push({username: newMap[key]['username']})
+    }
+  }
+  for(let key in newMap){
     playerArray.push(playerMap[key])
   }
   return playerArray
@@ -27,7 +36,7 @@ let startDay = function(lobbyId){
 let endDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   for(let key in lobbies[lobbyId]['players']){
-    lobbies[lobbyId]['players'][key]['killVote'] = []
+    // lobbies[lobbyId]['players'][key]['killVote'] = []
     lobbies[lobbyId]['players'][key]['skip']     = false
   }
   io.sockets.in(lobbyId).emit('night')
@@ -63,12 +72,12 @@ let checkWinCondition = function(playerMap, lobbyId){
   for(let key in playerMap){
     if(!playerMap[key]['isDead']){
       livingPlayers ++
-    }
-    if(playerMap[key]['role'] === 'witch'){
-      witches ++
+      if(playerMap[key]['role'] === 'witch'){
+        witches ++
+      }
     }
   }
-  console.log(witches, livingPlayers)
+
   if(witches >= (livingPlayers - witches)){
     if(lobbies[lobbyId]['dayTimer']){
       clearTimeout(lobbies[lobbyId]['dayTimer'])
@@ -96,10 +105,10 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId]['players'] = {}
     lobbies[newLobbyId]['players'][ioEvent.username] = {}
     lobbies[newLobbyId]['players'][ioEvent.username]['username'] = ioEvent.username
-    lobbies[newLobbyId]['players'][ioEvent.username]['killVote'] = []
     lobbies[newLobbyId]['players'][ioEvent.username]['isDead'] = false
     lobbies[newLobbyId]['players'][ioEvent.username]['skip'] = false
     lobbies[newLobbyId]['players'][ioEvent.username]['role'] = 'villager'
+    lobbies[newLobbyId]['players'][ioEvent.username]['voteFor'] = null
     io.sockets.in(newLobbyId).emit('created', {lobbyId: newLobbyId})
     let playerArray = playerMapToArray(lobbies[newLobbyId]['players'])
     io.sockets.in(newLobbyId).emit('playerUpdate', {players: playerArray})
@@ -114,10 +123,10 @@ io.sockets.on('connection', function(socket) {
     }
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username] = {}
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['username'] = ioEvent.username
-    lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['killVote'] = []
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['isDead'] = false
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['skip'] = false
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['role'] = 'villager'
+    lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['voteFor'] = null
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
   })
@@ -146,7 +155,11 @@ io.sockets.on('connection', function(socket) {
     if(ioEvent.skip){
       lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip'] = true
     } else {
-      lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['killVote'].push({username: ioEvent.from})
+      if(lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] === ioEvent.username){
+        lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] = null
+      } else {
+        lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] = ioEvent.username
+      }
     }
 
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
@@ -154,27 +167,34 @@ io.sockets.on('connection', function(socket) {
 
     // count our alive players
     let playerCount = 0,
+      playerVotes   = {},
       voteCount     = 0,
       skipCount     = 0
     for(let key in lobbies[ioEvent.lobbyId]['players']){
       if(!lobbies[ioEvent.lobbyId]['players'][key]['isDead']){
         playerCount ++
+        if(lobbies[ioEvent.lobbyId]['players'][key]['voteFor']){
+          if(playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']]){
+            playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']] ++
+          } else {
+            playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']] = 1
+          }
+        }
       }
-      if(ioEvent.username){
-        voteCount += lobbies[ioEvent.lobbyId]['players'][key]['killVote'].length
-      }
+
       if(ioEvent.skip){
         skipCount += lobbies[ioEvent.lobbyId]['players'][key]['skip'] ? 1 : 0
       }
     }
-    
     // if there is a majority vote, kill the player
     if(ioEvent.username){
-      if(lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['killVote'].length > (playerCount / 2)){
-        lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['isDead'] = true
-        let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
-        io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
-        endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+      for(var key in playerVotes){
+        if(playerVotes[key] > (playerCount / 2)){
+          lobbies[ioEvent.lobbyId]['players'][key]['isDead'] = true
+          let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+          io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
+          endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+        }
       }
     }
 
