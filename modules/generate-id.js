@@ -1,7 +1,7 @@
 var nid = require('nid')({length:2})
 
-const flavor = ['abandoned', 'ancient', 'blood', 'crookback', 'forgotten']
-const nouns = ['bog', 'forest', 'isle', 'harbor', 'hills', 'marsh', 'moore', 'warren']
+const flavor = ['abandoned', 'ancient', 'blood', 'crooked', 'forgotten', 'misty']
+const nouns = ['bog', 'forest', 'isle', 'harbor', 'hills', 'marshes', 'warren']
 
 module.exports = function() {
   flavorIndex = Math.round(Math.random() * (flavor.length - 1))

@@ -28,9 +28,9 @@ let playerMapToArray = (playerMap) => {
 
 let startDay = function(lobbyId){
   lobbies[lobbyId]['day'] = true
-  io.sockets.in(lobbyId).emit('day')
+  io.sockets.in(lobbyId).emit('day', {instructions: 'Where were you in the night?'})
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('night')
+    io.sockets.in(lobbyId).emit('night', {instructions: 'Something stirs'})
   }, 60000)
 }
 
@@ -40,7 +40,7 @@ let endDay = function(lobbyId){
     // lobbies[lobbyId]['players'][key]['killVote'] = []
     lobbies[lobbyId]['players'][key]['skip']     = false
   }
-  io.sockets.in(lobbyId).emit('night')
+  io.sockets.in(lobbyId).emit('night', {instructions: "What's that sound?"})
 }
 
 let assignRoles = function(lobbyId){
@@ -110,6 +110,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId]['players'][ioEvent.username]['skip'] = false
     lobbies[newLobbyId]['players'][ioEvent.username]['role'] = 'villager'
     lobbies[newLobbyId]['players'][ioEvent.username]['voteFor'] = null
+    lobbies[newLobbyId]['players'][ioEvent.username]['isCreator'] = true
     io.sockets.in(newLobbyId).emit('created', {lobbyId: newLobbyId})
     let playerArray = playerMapToArray(lobbies[newLobbyId]['players'])
     io.sockets.in(newLobbyId).emit('playerUpdate', {players: playerArray})
