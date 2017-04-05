@@ -13,11 +13,13 @@ let playerMapToArray = (playerMap) => {
   let newMap = Object.create(playerMap)
   let playerArray = []
   for(let key in newMap){
-    newMap[key]['killVote'] = []
+    newMap[key]['killVote']   = []
+    newMap[key]['ghostVote']  = []
   }
   for(let key in newMap){
     if(newMap[key]['voteFor']){
-      newMap[newMap[key]['voteFor']]['killVote'].push({username: newMap[key]['username']})
+      let voteType = newMap[key]['role'] === 'ghost' ? 'ghostVote' : 'killVote'
+      newMap[newMap[key]['voteFor']][voteType].push({username: newMap[key]['username']})
     }
   }
   for(let key in newMap){
@@ -26,41 +28,67 @@ let playerMapToArray = (playerMap) => {
   return playerArray
 }
 
+// day is for people and ghosts to vote
 let startDay = function(lobbyId){
-  lobbies[lobbyId]['day'] = true
-  io.sockets.in(lobbyId).emit('day', {instructions: 'Where were you in the night?'})
+  io.sockets.in(lobbyId).emit('turn', {instructions: 'Where were you in the night?', time: 'day'})
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('night', {instructions: 'Something stirs'})
+    io.sockets.in(lobbyId).emit('turn', {instructions: 'Something stirs', time: 'night'})
   }, 60000)
 }
 
+// dawn is for prophets to check a role
+let startDawn = function(lobbyId){
+  io.sockets.in(lobbyId).emit('turn', {instructions: 'Where were you in the night?', time: 'dawn'})
+  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+    io.sockets.in(lobbyId).emit('turn', {instructions: 'Something stirs', time: 'day'})
+  }, 30000)
+}
+
+// night is for whitches to kill
 let endDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   for(let key in lobbies[lobbyId]['players']){
-    // lobbies[lobbyId]['players'][key]['killVote'] = []
-    lobbies[lobbyId]['players'][key]['skip']     = false
+    lobbies[lobbyId]['players'][key]['skip'] = false
   }
-  io.sockets.in(lobbyId).emit('night', {instructions: "What's that sound?"})
+  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+    io.sockets.in(lobbyId).emit('turn', {instructions: 'Something stirs', time: 'dawn'})
+  }, 90000)
+  io.sockets.in(lobbyId).emit('turn', {instructions: "What's that sound?", time: 'night'})
 }
 
 let assignRoles = function(lobbyId){
-  let playerKeys   = Object.keys(lobbies[lobbyId]['players']),
-    playerCount    = playerKeys.length,
-    desiredWitches = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
-    assigned       = 0,
-    assignWitch    = function(){
+  let playerKeys      = Object.keys(lobbies[lobbyId]['players']),
+    playerCount       = playerKeys.length,
+    desiredWitches    = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
+    desiredProphets   = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
+    assignedWitches   = 0,
+    assignedProphets  = 0,
+    assignWitches     = function(){
       let key = Math.floor(Math.random() * (0 - playerCount)) + playerCount,
         role  = lobbies[lobbyId]['players'][playerKeys[key]]['role']
-      if(role === 'witch'){
-        this.call(this)
+      if(role === 'witch' || role === 'prophet'){
+        assignWitches.call(this)
         return
       }
-      assigned ++
+      assignedWitches ++
       lobbies[lobbyId]['players'][playerKeys[key]]['role'] = 'witch'
+    },
+    assignProphets    = function(){
+      let key = Math.floor(Math.random() * (0 - playerCount)) + playerCount,
+        role  = lobbies[lobbyId]['players'][playerKeys[key]]['role']
+      if(role === 'witch' || role === 'prophet'){
+        assignProphets.call(this)
+        return
+      }
+      assignedProphets ++
+      lobbies[lobbyId]['players'][playerKeys[key]]['role'] = 'prophet'
     }
 
-  while(assigned < desiredWitches){
-    assignWitch.call(this)
+  while(assignedWitches < desiredWitches){
+    assignWitches.call(this)
+  }
+  while(assignedProphets < desiredProphets){
+    assignProphets.call(this)
   }
 
   let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
@@ -71,14 +99,14 @@ let checkWinCondition = function(playerMap, lobbyId){
   let livingPlayers = 0,
     witches         = 0
   for(let key in playerMap){
-    if(!playerMap[key]['isDead']){
+    if(playerMap[key]['role'] !== 'ghost'){
       livingPlayers ++
       if(playerMap[key]['role'] === 'witch'){
         witches ++
       }
     }
   }
-
+  console.log(livingPlayers, witches)
   if(witches >= (livingPlayers - witches)){
     if(lobbies[lobbyId]['dayTimer']){
       clearTimeout(lobbies[lobbyId]['dayTimer'])
@@ -106,7 +134,6 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId]['players'] = {}
     lobbies[newLobbyId]['players'][ioEvent.username] = {}
     lobbies[newLobbyId]['players'][ioEvent.username]['username'] = ioEvent.username
-    lobbies[newLobbyId]['players'][ioEvent.username]['isDead'] = false
     lobbies[newLobbyId]['players'][ioEvent.username]['skip'] = false
     lobbies[newLobbyId]['players'][ioEvent.username]['role'] = 'villager'
     lobbies[newLobbyId]['players'][ioEvent.username]['voteFor'] = null
@@ -125,7 +152,6 @@ io.sockets.on('connection', function(socket) {
     }
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username] = {}
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['username'] = ioEvent.username
-    lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['isDead'] = false
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['skip'] = false
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['role'] = 'villager'
     lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['voteFor'] = null
@@ -134,12 +160,10 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('kill', function(ioEvent){
-    lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['isDead'] = true
+    lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['role'] = 'ghost'
 
     let gameOver = checkWinCondition.call(this, lobbies[ioEvent.lobbyId]['players'], ioEvent.lobbyId)
-    console.log(gameOver)
     if(gameOver){
-      console.log(gameOver)
       if(gameOver === 'witches'){
         io.sockets.in(ioEvent.lobbyId).emit('end', {winner: 'witches'})
       } else {
@@ -150,7 +174,7 @@ io.sockets.on('connection', function(socket) {
 
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
-    startDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+    startDawn.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
   })
 
   socket.on('submitVote', function(ioEvent){
@@ -173,7 +197,7 @@ io.sockets.on('connection', function(socket) {
       voteCount     = 0,
       skipCount     = 0
     for(let key in lobbies[ioEvent.lobbyId]['players']){
-      if(!lobbies[ioEvent.lobbyId]['players'][key]['isDead']){
+      if(lobbies[ioEvent.lobbyId]['players'][key]['role'] !== 'ghost'){
         playerCount ++
         if(lobbies[ioEvent.lobbyId]['players'][key]['voteFor']){
           if(playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']]){
@@ -192,7 +216,7 @@ io.sockets.on('connection', function(socket) {
     if(ioEvent.username){
       for(var key in playerVotes){
         if(playerVotes[key] > (playerCount / 2)){
-          lobbies[ioEvent.lobbyId]['players'][key]['isDead'] = true
+          lobbies[ioEvent.lobbyId]['players'][key]['role'] = 'ghost'
           let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
           io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
           endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
@@ -227,7 +251,7 @@ io.sockets.on('connection', function(socket) {
   socket.on('ready', function(ioEvent){
     io.sockets.in(ioEvent.lobbyId).emit('start')
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
-    startDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+    startDawn.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
   })
 
   socket.on('disconnect', function () {
