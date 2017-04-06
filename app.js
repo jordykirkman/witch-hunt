@@ -248,6 +248,18 @@ io.sockets.on('connection', function(socket) {
 
   })
 
+  // this emits a role reveal back to a prophet that requests one
+  socket.on('reveal', function(ioEvent){
+    let role = lobbies[ioEvent.lobbyId]['players'][ioEvent.username]['role']
+    clearTimeout(lobbies[ioEvent.lobbyId]['dayTimer'])
+    lobbies[ioEvent.lobbyId]['dayTimer'] = setTimeout(function(){
+      io.sockets.in(ioEvent.lobbyId).emit('turn', {instructions: 'A new day', time: 'day'})
+    }, 4000)
+    // emit only to this connected socket, not everyone else
+    // TODO: add RNG here
+    socket.emit('revealed', {role: role})
+  })
+
   socket.on('ready', function(ioEvent){
     io.sockets.in(ioEvent.lobbyId).emit('start')
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
