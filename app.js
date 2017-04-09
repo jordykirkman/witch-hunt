@@ -1,33 +1,13 @@
 var express = require('express')
 var nid = require('nid')
 var generateId = require('./modules/generate-id')
+var playerMapToArray = require('./modules/player-map-to-array')
 var app = express()
 var http = require('http').Server(app)
 var io = require('socket.io')(http)
 app.use(express.static('../witch-hunt-client/build'))
 
 let lobbies = {}
-
-// change our player key map to an array to send back to web client
-let playerMapToArray = (playerMap) => {
-  let newMap = Object.create(playerMap)
-  let playerArray = []
-  for(let key in newMap){
-    newMap[key]['killVote']   = []
-    newMap[key]['ghostVote']  = []
-  }
-  for(let key in newMap){
-    if(newMap[key]['voteFor']){
-      let voteType = newMap[key]['isDead'] ? 'ghostVote' : 'killVote'
-      newMap[newMap[key]['voteFor']][voteType].push({user: key})
-      newMap[key]['id'] = key
-    }
-  }
-  for(let key in newMap){
-    playerArray.push(playerMap[key])
-  }
-  return playerArray
-}
 
 // day is for people and ghosts to vote
 let startDay = function(lobbyId){
@@ -120,7 +100,7 @@ let checkWinCondition = function(playerMap, lobbyId){
       }
     }
   }
-  console.log(livingPlayers, witches)
+
   if(witches >= (livingPlayers - witches)){
     if(lobbies[lobbyId]['dayTimer']){
       clearTimeout(lobbies[lobbyId]['dayTimer'])
@@ -145,7 +125,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId] = {}
 
     // TODO condence into add player method
-    lobbies[newLobbyId]['players']                                = {}
+    lobbies[newLobbyId]['players']                         = {}
     lobbies[newLobbyId]['players'][socket.id]              = {}
     lobbies[newLobbyId]['players'][socket.id]['username']  = ioEvent.username
     lobbies[newLobbyId]['players'][socket.id]['skip']      = false
@@ -153,6 +133,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId]['players'][socket.id]['voteFor']   = null
     lobbies[newLobbyId]['players'][socket.id]['isDead']    = false
     lobbies[newLobbyId]['players'][socket.id]['isCreator'] = true
+    lobbies[newLobbyId]['players'][socket.id]['id']        = socket.id
     io.sockets.in(newLobbyId).emit('created', {lobbyId: newLobbyId})
     let playerArray = playerMapToArray(lobbies[newLobbyId]['players'])
     io.sockets.in(newLobbyId).emit('playerUpdate', {players: playerArray})
@@ -171,6 +152,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId]['players'][socket.id]['role']     = 'villager'
     lobbies[ioEvent.lobbyId]['players'][socket.id]['voteFor']  = null
     lobbies[ioEvent.lobbyId]['players'][socket.id]['isDead']   = false
+    lobbies[ioEvent.lobbyId]['players'][socket.id]['id']       = socket.id
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
   })
@@ -195,8 +177,16 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('submitVote', function(ioEvent){
     if(ioEvent.skip){
-      lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip'] = true
+      // set vote to null if they skip
+      lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] = null
+      if(lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip']){
+        lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip'] = false
+      } else {
+        lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip'] = true
+      }
     } else {
+      // set skip to false if they cast a vote
+      lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip'] = false
       if(lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] === ioEvent.user){
         lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] = null
       } else {
@@ -213,7 +203,7 @@ io.sockets.on('connection', function(socket) {
       voteCount     = 0,
       skipCount     = 0
     for(let key in lobbies[ioEvent.lobbyId]['players']){
-      if(lobbies[ioEvent.lobbyId]['players'][key]['role'] !== 'ghost'){
+      if(!lobbies[ioEvent.lobbyId]['players'][key]['isDead']){
         playerCount ++
         if(lobbies[ioEvent.lobbyId]['players'][key]['voteFor']){
           if(playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']]){
