@@ -134,9 +134,26 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId]['players'][socket.id]['isDead']    = false
     lobbies[newLobbyId]['players'][socket.id]['isCreator'] = true
     lobbies[newLobbyId]['players'][socket.id]['id']        = socket.id
-    io.sockets.in(newLobbyId).emit('created', {lobbyId: newLobbyId})
+    io.sockets.in(newLobbyId).emit('joined', {lobbyId: newLobbyId, userId: socket.id})
     let playerArray = playerMapToArray(lobbies[newLobbyId]['players'])
     io.sockets.in(newLobbyId).emit('playerUpdate', {players: playerArray})
+  })
+
+  socket.on('reconnectClient', function(ioEvent){
+    if(!lobbies[ioEvent.lobbyId]){
+      return
+    }
+    socket.join(ioEvent.lobbyId)
+    let oldPlayerRef = lobbies[ioEvent.lobbyId]['players'][ioEvent.userId]
+    // create a new user map with an the new socket.id as it's key/id
+    lobbies[ioEvent.lobbyId]['players'][socket.id]       = oldPlayerRef
+    lobbies[ioEvent.lobbyId]['players'][socket.id]['id'] = socket.id
+    // delete the old user map
+    delete lobbies[ioEvent.lobbyId]['players'][ioEvent.userId]
+    // send the joined event which tells the client to set a session token
+    socket.emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
+    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+    io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
   })
 
   socket.on('join', function(ioEvent){
@@ -153,6 +170,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId]['players'][socket.id]['voteFor']  = null
     lobbies[ioEvent.lobbyId]['players'][socket.id]['isDead']   = false
     lobbies[ioEvent.lobbyId]['players'][socket.id]['id']       = socket.id
+    io.sockets.in(newLobbyId).emit('joined', {lobbyId: newLobbyId, userId: socket.id})
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
   })
@@ -274,6 +292,9 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('disconnect', function () {
     console.log('A user disconnected');
+    for(let key in socket.rooms){
+      lobbies[key]['players'][socket.id]['disconnected'] = true
+    }
   });
 
 })
