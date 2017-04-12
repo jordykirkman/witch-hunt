@@ -116,6 +116,14 @@ let checkWinCondition = function(playerMap, lobbyId){
   return false
 }
 
+// day is for people and ghosts to vote
+let reset = function(lobbyId){
+  io.sockets.in(lobbyId).emit('turn', {instructions: 'Day breaks', time: 'day'})
+  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+    io.sockets.in(lobbyId).emit('turn', {instructions: 'Something stirs in the night', time: 'night'})
+  }, 60000)
+}
+
 io.sockets.on('connection', function(socket) {
   console.log(`a user connected ${socket.id}`)
 
@@ -170,7 +178,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId]['players'][socket.id]['voteFor']  = null
     lobbies[ioEvent.lobbyId]['players'][socket.id]['isDead']   = false
     lobbies[ioEvent.lobbyId]['players'][socket.id]['id']       = socket.id
-    io.sockets.in(newLobbyId).emit('joined', {lobbyId: newLobbyId, userId: socket.id})
+    io.sockets.in(ioEvent.lobbyId).emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('playerUpdate', {players: playerArray})
   })
