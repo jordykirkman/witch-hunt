@@ -9,6 +9,7 @@ const rng               = require('./modules/rng')
 const app               = express()
 const http              = require('http').Server(app)
 const io                = require('socket.io')(http)
+const PORT              = process.env.PORT || 3000;
 
 app.enable('trust proxy');
 app.use(express.static(path.join(__dirname, 'public')));
@@ -360,6 +361,6 @@ io.sockets.on('connection', function(socket) {
 
 })
 
-http.listen(80, function () {
+http.listen(PORT, function () {
   console.log('Witch Hunt is running')
 })
