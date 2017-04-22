@@ -9,3 +9,4 @@
 
 # production
 /public
+npm-debug.log
