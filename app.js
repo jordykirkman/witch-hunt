@@ -1,4 +1,5 @@
 const express           = require('express')
+const path              = require('path')
 const nid               = require('nid')
 const generateId        = require('./modules/generate-id')
 const generateName      = require('./modules/generate-name')
@@ -9,7 +10,8 @@ const app               = express()
 const http              = require('http').Server(app)
 const io                = require('socket.io')(http)
 
-app.use(express.static('public'))
+app.enable('trust proxy');
+app.use(express.static(path.join(__dirname, 'public')));
 
 let lobbies = {}
 
@@ -358,6 +360,6 @@ io.sockets.on('connection', function(socket) {
 
 })
 
-http.listen(3000, function () {
-  console.log('Example app listening on port 3000!')
+http.listen(80, function () {
+  console.log('Witch Hunt is running')
 })
