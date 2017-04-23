@@ -12,6 +12,8 @@
 # limitations under the License.
 #
 # [START runtime]
+env_variables:
+  GCLOUD_STORAGE_BUCKET: witch-hunt-165321
 manual_scaling:
     instances: 1
 runtime: nodejs

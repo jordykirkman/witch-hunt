@@ -12,7 +12,7 @@ const io                = require('socket.io')(http)
 const PORT              = process.env.PORT || 3000
 
 app.enable('trust proxy')
-app.use(express.static(path.join(__dirname, 'public')))
+app.use(express.static(`https://console.cloud.google.com/storage/${process.env.GCLOUD_STORAGE_BUCKET}/`))
 
 let lobbies = {}
 
