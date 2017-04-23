@@ -12,6 +12,7 @@
 # limitations under the License.
 #
 # [START runtime]
+manual_scaling: instances: 1
 runtime: nodejs
 env: flex
 # [END runtime]

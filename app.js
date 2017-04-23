@@ -9,10 +9,10 @@ const rng               = require('./modules/rng')
 const app               = express()
 const http              = require('http').Server(app)
 const io                = require('socket.io')(http)
-const PORT              = process.env.PORT || 3000;
+const PORT              = process.env.PORT || 3000
 
-app.enable('trust proxy');
-app.use(express.static(path.join(__dirname, 'public')));
+app.enable('trust proxy')
+app.use(express.static(path.join(__dirname, 'public')))
 
 let lobbies = {}
 
