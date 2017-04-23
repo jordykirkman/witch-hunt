@@ -12,7 +12,7 @@ const io                = require('socket.io')(http)
 const PORT              = process.env.PORT || 3000
 
 app.enable('trust proxy')
-app.use(express.static('https://storage.cloud.google.com/witch-hunt-165321'))
+app.use(express.static('gcr.io/witch-hunt-165321'))
 
 let lobbies = {}
 
