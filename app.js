@@ -17,17 +17,19 @@ app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')));
 let lobbies = {}
 
 // day is for people and ghosts to vote
-let startDay = function(lobbyId){
+const startDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
-  io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Day breaks. The village is uneasy.', time: 'day'})
+  let instructionsMessage = 'Day breaks. The village is uneasy.'
+  lobbies[lobbyId]['gameSettings']['time'] = 'day'
+  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Something stirs in the night.', time: 'night'})
-    endDay.call(this, lobbyId)
+    startNight.call(this, lobbyId)
   }, 60000)
 }
 
 // dawn is for prophets to check a role
-let startDawn = function(lobbyId, message){
+const startDawn = function(lobbyId, message){
   message = message ? message : ''
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   // no point in dawn if no prophets are alive
@@ -43,14 +45,31 @@ let startDawn = function(lobbyId, message){
     startDay.call(this, lobbyId)
     return
   }
-  io.sockets.in(lobbyId).emit('gameUpdate', {instructions: `${message}A prophet gazes into the fire. Who do they see?`, time: 'dawn'})
+  let instructionsMessage = `${message}A prophet gazes into the fire. Who do they see?`
+  lobbies[lobbyId]['gameSettings']['time'] = 'dawn'
+  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Day breaks. The village is uneasy.', time: 'day'})
     startDay.call(this, lobbyId)
   }, 30000)
 }
 
-let showRole = function(lobbyId){
+// night is for whitches to kill
+const startNight = function(lobbyId){
+  clearTimeout(lobbies[lobbyId]['dayTimer'])
+  for(let playerId in lobbies[lobbyId]['players']){
+    lobbies[lobbyId]['players'][playerId]['skip'] = false
+  }
+  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+    startDawn.call(this, lobbyId)
+  }, 30000)
+  let instructionsMessage = 'Something stirs in the night.'
+  lobbies[lobbyId]['gameSettings']['time'] = 'night'
+  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
+}
+
+const showRole = function(lobbyId){
   for(let playerId in lobbies[lobbyId]['players']){
     let role = lobbies[lobbyId]['players'][playerId]['role']
     io.sockets.to(playerId).emit('notification', {notification: `you are a ${role}`, messageClass: role})
@@ -60,20 +79,7 @@ let showRole = function(lobbyId){
   }, 6000)
 }
 
-// night is for whitches to kill
-let endDay = function(lobbyId){
-  clearTimeout(lobbies[lobbyId]['dayTimer'])
-  for(let playerId in lobbies[lobbyId]['players']){
-    lobbies[lobbyId]['players'][playerId]['skip'] = false
-  }
-  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'A prophet gazes into the fire. Who do they see?', time: 'dawn'})
-    startDawn.call(this, lobbyId)
-  }, 30000)
-  io.sockets.in(lobbyId).emit('gameUpdate', {instructions: "Something stirs in the night", time: 'night'})
-}
-
-let assignRoles = function(lobbyId){
+const assignRoles = function(lobbyId){
   let playerKeys      = Object.keys(lobbies[lobbyId]['players']),
     playerCount       = playerKeys.length,
     desiredWitches    = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
@@ -117,7 +123,7 @@ let assignRoles = function(lobbyId){
   io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
 }
 
-let checkWinCondition = function(playerMap, lobbyId){
+const checkWinCondition = function(playerMap, lobbyId){
   let livingPlayers = 0,
     witches         = 0
   for(let key in playerMap){
@@ -145,7 +151,7 @@ let checkWinCondition = function(playerMap, lobbyId){
 }
 
 // day is for people and ghosts to vote
-let reset = function(lobbyId){
+const reset = function(lobbyId){
   io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Day breaks. The village is uneasy.', time: 'day'})
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Something stirs in the night', time: 'night'})
@@ -305,7 +311,7 @@ io.sockets.on('connection', function(socket) {
           lobbies[ioEvent.lobbyId]['players'][key]['isDead'] = true
           let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
           io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
-          endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+          startNight.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
         }
       }
     }
@@ -324,13 +330,13 @@ io.sockets.on('connection', function(socket) {
 
     // if enough people have skipped to prevent a vote, end the day
     if(skipCount > (playerCount / 2)){
-      endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+      startNight.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
       return
     }
 
     // if everyone has voted, end the day
     if(voteCount + skipCount === playerCount){
-      endDay.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+      startNight.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
       return
     }
 
