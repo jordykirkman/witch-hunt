@@ -365,16 +365,22 @@ io.sockets.on('connection', function(socket) {
     for(let room in socket.rooms){
       lobbies[room]['players'][socket.id]['disconnected'] = true
       socket.leave(room)
-      // is anyone left in this lobby?
-      let lobbyEmpty = true
-      for(var playerId in lobbies[room]['players']){
-        if(!lobbies[playerId]['players'][playerId]['disconnected']){
-          lobbyEmpty = false
+      /*
+        is anyone left in this lobby?
+        lets set a 30 second timer after a user disconnects to check if a room is empty
+        if it's still empty after they have had time to reconnect, delete the room
+      */
+      setTimeout(function(){
+        let lobbyEmpty = true
+        for(var playerId in lobbies[room]['players']){
+          if(!lobbies[playerId]['players'][playerId]['disconnected']){
+            lobbyEmpty = false
+          }
+          if(lobbyEmpty){
+            delete lobbies[room]
+          }
         }
-        if(lobbyEmpty){
-          delete lobbies[playerId]
-        }
-      }
+      }, 30000)
     }
   })
 
