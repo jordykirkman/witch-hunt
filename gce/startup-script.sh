@@ -22,10 +22,10 @@ ln -s /opt/nodejs/bin/npm /usr/bin/npm
 # git requires $HOME and it's not set during the startup script.
 export HOME=/root
 git config --global credential.helper gcloud.sh
-git clone https://source.developers.google.com/p/$PROJECTID /opt/app
+git clone https://source.developers.google.com/p/$PROJECTID/r/witch-hunt /opt/app
 
 # Install app dependencies
-cd /opt/app/7-gce
+cd /opt/app/witch-hunt
 npm install
 
 # Create a nodeapp user. The application will run as this user.
@@ -35,7 +35,7 @@ chown -R nodeapp:nodeapp /opt/app
 # Configure supervisor to run the node app.
 cat >/etc/supervisor/conf.d/node-app.conf << EOF
 [program:nodeapp]
-directory=/opt/app/7-gce
+directory=/opt/app/witch-hunt
 command=npm start
 autostart=true
 autorestart=true
