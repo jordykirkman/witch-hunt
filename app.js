@@ -12,9 +12,9 @@ const io                = require('socket.io')(http)
 const PORT              = process.env.PORT || 80
 
 app.enable('trust proxy')
-app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')));
+app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
 
-let lobbies = {}
+const lobbies = {}
 
 // day is for people and ghosts to vote
 const startDay = function(lobbyId){
@@ -393,5 +393,5 @@ io.sockets.on('connection', function(socket) {
 })
 
 http.listen(PORT, function () {
-  console.log('Witch Hunt is running')
+  console.log('Witch Hunt is running on ' + PORT)
 })
