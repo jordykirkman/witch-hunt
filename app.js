@@ -9,14 +9,14 @@ const rng               = require('./modules/rng')
 const app               = express()
 const http              = require('http').Server(app)
 const io                = require('socket.io')(http)
-const PORT              = process.env.PORT || 80
+const PORT              = process.env.WITCH_HUNT_PORT || 80
 
 app.enable('trust proxy')
 app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
 
 const lobbies = {}
 
-// day is for people and ghosts to vote
+// day is for people to vote
 const startDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   let instructionsMessage = 'Day breaks. The village is uneasy.'
@@ -110,11 +110,14 @@ const assignRoles = function(lobbyId){
   // reset roles from last game
   for(let key in lobbies[lobbyId]['players']){
     lobbies[lobbyId]['players'][key]['role'] = 'villager'
+    lobbies[lobbyId]['players'][key]['isDead'] = false
   }
 
+  // assign witches
   while(assignedWitches < desiredWitches){
     assignWitches.call(this)
   }
+  // assign vilagers
   while(assignedProphets < desiredProphets){
     assignProphets.call(this)
   }
@@ -210,15 +213,17 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('join', function(ioEvent){
-    if(lobbies[newLobbyId]['gameSettings'].started){
-      socket.emit('error', {error: "That village is pointing fingers and murmering currently. Try again when the monster is gone."})
+    // is there a lobby?
+    if(!lobbies[ioEvent.lobbyId]){
+      socket.emit('errorResponse', {error: "Could not find that village in the seeing stone."})
+      return
+    }
+    // has it started?
+    if(lobbies[ioEvent.lobbyId]['gameSettings'].started){
+      socket.emit('errorResponse', {error: "That village is pointing fingers and murmering currently. Try again when the monster is gone."})
       return
     }
     // TODO condence into add player method
-    if(!lobbies[ioEvent.lobbyId]){
-      socket.emit('error', {error: "Could not find that game in the seeing stone."})
-      return
-    }
     socket.join(ioEvent.lobbyId)
     let freshPlayer = new Player(socket.id, false, false, 'villager', false, ioEvent.username)
     lobbies[ioEvent.lobbyId]['players'][socket.id] = freshPlayer
@@ -232,7 +237,7 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('kill', function(ioEvent){
     // RNG
-    let castSucceeded = rng(0.67)
+    let castSucceeded = rng(0.6)
     // if the cast failed send a notification to this socket only
     if(!castSucceeded){
       let username = lobbies[ioEvent.lobbyId]['players'][ioEvent.user].username
@@ -248,10 +253,10 @@ io.sockets.on('connection', function(socket) {
     if(gameOver){
       lobbies[ioEvent.lobbyId]['gameSettings'].started = false
       if(gameOver === 'witches'){
-        io.sockets.to(playerId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
+        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false})
       } else {
-        io.sockets.to(playerId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
+        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
       }
       return
@@ -263,6 +268,9 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('submitVote', function(ioEvent){
     if(ioEvent.skip){
+      if(lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['isDead']){
+        return;
+      }
       // set vote to null if they skip
       lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['voteFor'] = null
       if(lobbies[ioEvent.lobbyId]['players'][ioEvent.from]['skip']){
@@ -324,7 +332,7 @@ io.sockets.on('connection', function(socket) {
       } else {
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
       }
-      clearTimeout(lobbies[lobbyId]['dayTimer'])
+      clearTimeout(lobbies[ioEvent.lobbyId]['dayTimer'])
       return
     }
 
@@ -350,7 +358,7 @@ io.sockets.on('connection', function(socket) {
       io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {instructions: 'A new day', time: 'day'})
     }, 4000)
     // emit only to this connected socket, not everyone else
-    let castSucceeded = rng(0.67),
+    let castSucceeded = rng(0.7),
       message         = castSucceeded ? role : 'Failed!',
       messageClass    = castSucceeded ? 'success' : 'fail'
     socket.emit('notification', {notification: message, messageClass: messageClass})
