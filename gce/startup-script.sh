@@ -9,8 +9,8 @@ curl -s "https://storage.googleapis.com/signals-agents/logging/google-fluentd-in
 service google-fluentd restart &
 
 # Install dependencies from apt
-# apt-get update
-# apt-get install -yq ca-certificates git nodejs build-essential supervisor
+apt-get update
+apt-get install -yq ca-certificates git nodejs build-essential supervisor
 
 # Install nodejs
 # mkdir /opt/nodejs
@@ -35,7 +35,7 @@ chown -R nodeapp:nodeapp /opt/app
 # Configure supervisor to run the node app.
 cat >/etc/supervisor/conf.d/node-app.conf << EOF
 [program:nodeapp]
-directory=/opt/app/witch-hunt
+directory=/witch-hunt
 command=node app.js
 autostart=true
 autorestart=true
