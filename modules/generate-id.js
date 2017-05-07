@@ -1,4 +1,4 @@
-const nid = require('nid'),
+const nid = require('nid')({alphabet: [1,2,3,4,5,6,7,8,9], length:2}),
   flavor = ['abandoned', 'ancient', 'crooked', 'forgotten', 'misty', 'restless'],
   nouns = ['caves', 'bog']
 // const nouns = ['bog', 'forest', 'hills', 'marshes', 'cliffs']
