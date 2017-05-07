@@ -1,6 +1,5 @@
 const express           = require('express')
 const path              = require('path')
-const nid               = require('nid')
 const generateId        = require('./modules/generate-id')
 const generateName      = require('./modules/generate-name')
 const Player            = require('./modules/player')
