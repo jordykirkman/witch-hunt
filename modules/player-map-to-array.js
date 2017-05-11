@@ -7,8 +7,11 @@ module.exports = function(playerMap) {
   }
   for(let key in newMap){
     if(newMap[key].voteFor){
-      let voteType = newMap[key]['isDead'] ? 'ghostVote' : 'killVote'
-      newMap[newMap[key]['voteFor']][voteType].push({user: key})
+      // the player this person votes to kill
+      const voteForPlayerId = newMap[key].voteFor
+      // ghostVote and killVote are arrays those hold vote counts
+      const voteType = newMap[key].isDead ? 'ghostVote' : 'killVote'
+      newMap[voteForPlayerId][voteType].push({user: key})
     }
   }
   for(let key in newMap){

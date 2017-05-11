@@ -1,5 +1,6 @@
 const express           = require('express')
 const path              = require('path')
+const nid               = require('nid')
 const generateId        = require('./modules/generate-id')
 const generateName      = require('./modules/generate-name')
 const Player            = require('./modules/player')
@@ -9,6 +10,10 @@ const app               = express()
 const http              = require('http').Server(app)
 const io                = require('socket.io')(http)
 const PORT              = process.env.WITCH_HUNT_PORT || 80
+// TODO make a dialogue file
+const prophetText       = "Select someone to reveal thier secrets."
+const witchText         = "Select who shouldn't live any longer."
+const dayText           = "Select someone who is guilty or choose to skip today."
 
 app.enable('trust proxy')
 app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
@@ -19,9 +24,12 @@ const lobbies = {}
 const startDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   let instructionsMessage = 'Day breaks. The village is uneasy.'
-  lobbies[lobbyId]['gameSettings']['time'] = 'day'
-  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
-  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
+  lobbies[lobbyId].gameSettings.time         = 'day'
+  lobbies[lobbyId].gameSettings.instructions = instructionsMessage
+  for(let key in lobbies[lobbyId].players){
+    lobbies[lobbyId].players[key].killVote   = null
+  }
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     startNight.call(this, lobbyId)
   }, 60000)
@@ -56,9 +64,15 @@ const startDawn = function(lobbyId, message){
 // night is for whitches to kill
 const startNight = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
-  for(let playerId in lobbies[lobbyId]['players']){
-    lobbies[lobbyId]['players'][playerId]['skip'] = false
+  // reset dem killBotes bb
+  for(let playerId in lobbies[lobbyId].players){
+    lobbies[lobbyId].players[playerId].killVote = null
+    lobbies[lobbyId].players[playerId].skip     = false
   }
+  // send the players back with reset killVotes
+  let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
+  io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
+  // reset the timer
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     startDawn.call(this, lobbyId)
   }, 30000)
@@ -154,6 +168,7 @@ const checkWinCondition = function(playerMap, lobbyId){
 
 // day is for people and ghosts to vote
 const reset = function(lobbyId){
+  lobbies[ioEvent.lobbyId].gameSettings.winner = null
   io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Day breaks. The village is uneasy.', time: 'day'})
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Something stirs in the night', time: 'night'})
@@ -165,14 +180,18 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('create', function(ioEvent){
     const newLobbyId = generateId()
+    console.log("socket id on create" + socket.id)
     let freshPlayer = new Player(socket.id, true, false, 'villager', false, ioEvent.username)
     socket.join(newLobbyId)
     lobbies[newLobbyId] = {}
     // add player to lobby
-    lobbies[newLobbyId]['players']                  = {}
-    lobbies[newLobbyId]['players'][socket.id]       = freshPlayer
-    lobbies[newLobbyId]['gameSettings']             = {}
-    lobbies[newLobbyId]['gameSettings']['lobbyId']  = newLobbyId
+    lobbies[newLobbyId].players                   = {}
+    lobbies[newLobbyId].players[socket.id]        = freshPlayer
+    lobbies[newLobbyId].gameSettings              = {}
+    lobbies[newLobbyId].gameSettings.prophetText  = prophetText
+    lobbies[newLobbyId].gameSettings.witchText    = witchText
+    lobbies[newLobbyId].gameSettings.dayText      = dayText
+    lobbies[newLobbyId].gameSettings.lobbyId      = newLobbyId
     // send them back the lobby id
     socket.emit('gameUpdate', lobbies[newLobbyId].gameSettings)
     // send a joined event to this socket so it creates a session
@@ -196,18 +215,22 @@ io.sockets.on('connection', function(socket) {
       return
     }
     socket.join(ioEvent.lobbyId)
-    let oldPlayerRef = lobbies[ioEvent.lobbyId]['players'][ioEvent.userId]
+    let oldPlayerRef = lobbies[ioEvent.lobbyId].players[ioEvent.userId]
     // create a new user map with an the new socket.id as it's key/id
-    lobbies[ioEvent.lobbyId]['players'][socket.id]                 = oldPlayerRef
-    lobbies[ioEvent.lobbyId]['players'][socket.id]['id']           = socket.id
-    lobbies[ioEvent.lobbyId]['players'][socket.id]['disconnected'] = false
+    console.log("old player ref", oldPlayerRef)
+    if(!oldPlayerRef){
+      return
+    }
+    lobbies[ioEvent.lobbyId].players[socket.id]                 = oldPlayerRef
+    lobbies[ioEvent.lobbyId].players[socket.id].id              = socket.id
+    lobbies[ioEvent.lobbyId].players[socket.id].disconnected    = false
     // delete the old user map
-    delete lobbies[ioEvent.lobbyId]['players'][ioEvent.userId]
+    delete lobbies[ioEvent.lobbyId].players[ioEvent.userId]
     // send the joined event which tells the client to set a session token
     socket.emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
     // send a gameUpdate event to set their local game state to match the lobby settings
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
-    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
     io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
   })
 
@@ -252,9 +275,11 @@ io.sockets.on('connection', function(socket) {
     if(gameOver){
       lobbies[ioEvent.lobbyId]['gameSettings'].started = false
       if(gameOver === 'witches'){
+        lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false})
       } else {
+        lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
       }
@@ -327,8 +352,12 @@ io.sockets.on('connection', function(socket) {
     if(gameOver){
       lobbies[ioEvent.lobbyId]['gameSettings'].started = false
       if(gameOver === 'witches'){
+        lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
+        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false})
       } else {
+        lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
+        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villages'})
         io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
       }
       clearTimeout(lobbies[ioEvent.lobbyId]['dayTimer'])
@@ -349,12 +378,41 @@ io.sockets.on('connection', function(socket) {
 
   })
 
+  // if the user wants to leave, reset their client state and kill/delete their user
+  socket.on('leaveLobby', function(ioEvent){
+    socket.emit('gameUpdate', {
+      user:               {},
+      lobbyId:            '',
+      joinLobbyId:        '',
+      instructions:       null,
+      playerNotification: null,
+      showNotification:   false,
+      notificationClass:  '',
+      players:            [],
+      create:             true,
+      started:            false,
+      winner:             null,
+      time:               'dawn'
+    })
+    // if the lobby is empty delete it
+    if(lobbies[ioEvent.lobbyId].players.keys().length === 0){
+      delete lobbies[ioEvent.lobbyId]
+    } else {
+      // otherwise kill their player in this game
+      lobbies[ioEvent.lobbyId].players[socket.id].isDead       = true
+      lobbies[ioEvent.lobbyId].players[socket.id].disconnected = true
+    }
+  })
+
   // this emits a role reveal back to a prophet that requests one
   socket.on('reveal', function(ioEvent){
-    let role = lobbies[ioEvent.lobbyId]['players'][ioEvent.user]['role']
-    clearTimeout(lobbies[ioEvent.lobbyId]['dayTimer'])
-    lobbies[ioEvent.lobbyId]['dayTimer'] = setTimeout(function(){
-      io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {instructions: 'A new day', time: 'day'})
+    self = this
+    let role = lobbies[ioEvent.lobbyId].players[ioEvent.user].role
+    setTimeout(function(){
+      if(lobbies[ioEvent.lobbyId].gameSettings.time === 'dawn'){
+        clearTimeout(lobbies[ioEvent.lobbyId].dayTimer)
+        startDay.call(self, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+      }
     }, 4000)
     // emit only to this connected socket, not everyone else
     let castSucceeded = rng(0.7),
@@ -364,9 +422,9 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('ready', function(ioEvent){
-    lobbies[ioEvent.lobbyId]['gameSettings'].started = true
-    lobbies[ioEvent.lobbyId]['gameSettings'].time    = 'dawn'
-    lobbies[ioEvent.lobbyId]['gameSettings'].winner  = null
+    lobbies[ioEvent.lobbyId].gameSettings.started = true
+    lobbies[ioEvent.lobbyId].gameSettings.time    = 'dawn'
+    lobbies[ioEvent.lobbyId].gameSettings.winner  = null
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     showRole.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
