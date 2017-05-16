@@ -14,6 +14,7 @@ const PORT              = process.env.WITCH_HUNT_PORT || 80
 const prophetText       = "Select someone to reveal thier secrets."
 const witchText         = "Select who shouldn't live any longer."
 const dayText           = "Select someone who is guilty or choose to skip today."
+const audioNoises       = ['twig_snap', 'door_creak', 'cup_drop']
 
 app.enable('trust proxy')
 app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
@@ -37,6 +38,7 @@ const startDay = function(lobbyId){
 
 // dawn is for prophets to check a role
 const startDawn = function(lobbyId, message){
+  clearInterval(lobbies[lobbyId].nightSoundsInterval)
   message = message ? message : ''
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   // no point in dawn if no prophets are alive
@@ -80,6 +82,17 @@ const startNight = function(lobbyId){
   lobbies[lobbyId]['gameSettings']['time'] = 'night'
   lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
+
+  let playerIds       = Object.keys(lobbies[lobbyId].players)
+    playerCount       = playerIds.length,
+    audioNoisesLength = audioNoises.length
+  lobbies[lobbyId].nightSoundsInterval = setInterval(function(){
+    let playerId = playerIds[Math.floor(Math.random() * playerCount)],
+      audioName = audioNoises[Math.floor(Math.random() * audioNoisesLength)]
+    io.sockets.to(playerId).emit('audio', {fileName: audioName})
+  }, 8000)
+  // TODO modify this by player count?
+
 }
 
 const showRole = function(lobbyId){
@@ -90,6 +103,15 @@ const showRole = function(lobbyId){
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     startDawn.call(this, lobbyId)
   }, 6000)
+}
+
+const removeDisconnectedPlayers = function(lobbyId){
+  for(let playerId in lobbies[lobbyId].players){
+    if(lobbies[lobbyId].players[playerId].disconnected){
+      // if the player is not here when the game starts, get rid of them
+      delete lobbies[lobbyId].players[playerId]
+    }
+  }
 }
 
 const assignRoles = function(lobbyId){
@@ -120,10 +142,11 @@ const assignRoles = function(lobbyId){
       lobbies[lobbyId]['players'][playerKeys[key]]['role'] = 'prophet'
     }
 
-  // reset roles from last game
+  // reset roles from last game, deaths and votes
   for(let key in lobbies[lobbyId]['players']){
-    lobbies[lobbyId]['players'][key]['role'] = 'villager'
-    lobbies[lobbyId]['players'][key]['isDead'] = false
+    lobbies[lobbyId].players[key].role      = 'villager'
+    lobbies[lobbyId].players[key].isDead    = false
+    lobbies[lobbyId].players[key].killVote  = null
   }
 
   // assign witches
@@ -164,15 +187,6 @@ const checkWinCondition = function(playerMap, lobbyId){
     return 'villagers'
   }
   return false
-}
-
-// day is for people and ghosts to vote
-const reset = function(lobbyId){
-  lobbies[ioEvent.lobbyId].gameSettings.winner = null
-  io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Day breaks. The village is uneasy.', time: 'day'})
-  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    io.sockets.in(lobbyId).emit('gameUpdate', {instructions: 'Something stirs in the night', time: 'night'})
-  }, 60000)
 }
 
 io.sockets.on('connection', function(socket) {
@@ -257,6 +271,7 @@ io.sockets.on('connection', function(socket) {
     io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
   })
 
+  // TODO rework this so that it reveals at the start of dawn to add supsense
   socket.on('kill', function(ioEvent){
     // RNG
     let castSucceeded = rng(0.6)
@@ -265,8 +280,9 @@ io.sockets.on('connection', function(socket) {
       let username = lobbies[ioEvent.lobbyId]['players'][ioEvent.user].username
       socket.emit('notification', {notification: `${username} survived`, messageClass: 'failed'})
       socket.to(ioEvent.user).emit('notification', {notification: 'you survived', messageClass: 'failed'})
+      // lobbies[ioEvent.lobbyId].gameSettings.notification = `${username} was nearly killed.`
       // TODO: add rng flavor here to the attack type depending on village location
-      startDawn.call(this, ioEvent.lobbyId, `${username} was nearly killed. `)
+      startDawn.call(this, ioEvent.lobbyId, `${username} was nearly killed.`)
       return
     }
     lobbies[ioEvent.lobbyId]['players'][ioEvent.user]['isDead'] = true
@@ -277,16 +293,17 @@ io.sockets.on('connection', function(socket) {
       if(gameOver === 'witches'){
         lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false})
+        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false, instructions: null})
       } else {
         lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
+        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false, instructions: null})
       }
       return
     }
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
     io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
+    // experimenting with night always lasting 30 seconds
     startDawn.call(this, ioEvent.lobbyId)
   })
 
@@ -354,11 +371,11 @@ io.sockets.on('connection', function(socket) {
       if(gameOver === 'witches'){
         lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false})
+        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false, instructions: null})
       } else {
         lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
         io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villages'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false})
+        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false, instructions: null})
       }
       clearTimeout(lobbies[ioEvent.lobbyId]['dayTimer'])
       return
@@ -392,15 +409,17 @@ io.sockets.on('connection', function(socket) {
       create:             true,
       started:            false,
       winner:             null,
-      time:               'dawn'
+      time:               'night'
     })
     // if the lobby is empty delete it
-    if(lobbies[ioEvent.lobbyId].players.keys().length === 0){
+    if(Object.keys(lobbies[ioEvent.lobbyId].players).length === 1){
       delete lobbies[ioEvent.lobbyId]
     } else {
       // otherwise kill their player in this game
       lobbies[ioEvent.lobbyId].players[socket.id].isDead       = true
       lobbies[ioEvent.lobbyId].players[socket.id].disconnected = true
+      // and leave the room
+      socket.leave(ioEvent.lobbyId)
     }
   })
 
@@ -426,6 +445,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId].gameSettings.time    = 'dawn'
     lobbies[ioEvent.lobbyId].gameSettings.winner  = null
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
+    removeDisconnectedPlayers.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     showRole.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
   })
