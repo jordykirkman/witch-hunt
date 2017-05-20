@@ -1,7 +1,6 @@
 apps:
   - script   : app.js
     instances: 1
-  - script : worker.js
     watch  : true
     env    :
       NODE_ENV: development
