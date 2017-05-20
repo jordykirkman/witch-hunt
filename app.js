@@ -1,7 +1,7 @@
 const express           = require('express')
 const path              = require('path')
 const nid               = require('nid')
-const generateId        = require('./modules/generate-id')(nid({alphabet: [1,2,3,4,5,6,7,8,9], length:2}))
+const generateId        = require('./modules/generate-id')
 const generateName      = require('./modules/generate-name')
 const Player            = require('./modules/player')
 const playerMapToArray  = require('./modules/player-map-to-array')
