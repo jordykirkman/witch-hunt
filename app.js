@@ -1,7 +1,7 @@
 const express           = require('express')
 const path              = require('path')
 const nid               = require('nid')
-const generateId        = require('./modules/generate-id')
+const generateId        = require('./modules/generate-id')(nid({alphabet: [1,2,3,4,5,6,7,8,9], length:2}))
 const generateName      = require('./modules/generate-name')
 const Player            = require('./modules/player')
 const playerMapToArray  = require('./modules/player-map-to-array')
@@ -14,7 +14,7 @@ const PORT              = process.env.WITCH_HUNT_PORT || 80
 const prophetText       = "Select someone to reveal thier secrets."
 const witchText         = "Select who shouldn't live any longer."
 const dayText           = "Select someone who is guilty or choose to skip today."
-const audioNoises       = ['twig_snap', 'door_creak', 'cup_drop']
+const audioNoises       = ['twig_snap', 'door_creak', 'cup_drop', 'branch_break', 'glass_drop']
 
 app.enable('trust proxy')
 app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
@@ -38,7 +38,7 @@ const startDay = function(lobbyId){
 
 // dawn is for prophets to check a role
 const startDawn = function(lobbyId, message){
-  clearInterval(lobbies[lobbyId].nightSoundsInterval)
+  // clearInterval(lobbies[lobbyId].nightSoundsInterval)
   message = message ? message : ''
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   // no point in dawn if no prophets are alive
@@ -86,11 +86,12 @@ const startNight = function(lobbyId){
   let playerIds       = Object.keys(lobbies[lobbyId].players)
     playerCount       = playerIds.length,
     audioNoisesLength = audioNoises.length
-  lobbies[lobbyId].nightSoundsInterval = setInterval(function(){
-    let playerId = playerIds[Math.floor(Math.random() * playerCount)],
-      audioName = audioNoises[Math.floor(Math.random() * audioNoisesLength)]
-    io.sockets.to(playerId).emit('audio', {fileName: audioName})
-  }, 8000)
+  // audio isnt allowed on mobile :(
+  // lobbies[lobbyId].nightSoundsInterval = setInterval(function(){
+  //   let playerId = playerIds[Math.floor(Math.random() * playerCount)],
+  //     audioName = audioNoises[Math.floor(Math.random() * audioNoisesLength)]
+  //   io.sockets.to(playerId).emit('audio', {fileName: audioName})
+  // }, 8000)
   // TODO modify this by player count?
 
 }
@@ -415,9 +416,11 @@ io.sockets.on('connection', function(socket) {
     if(Object.keys(lobbies[ioEvent.lobbyId].players).length === 1){
       delete lobbies[ioEvent.lobbyId]
     } else {
-      // otherwise kill their player in this game
-      lobbies[ioEvent.lobbyId].players[socket.id].isDead       = true
-      lobbies[ioEvent.lobbyId].players[socket.id].disconnected = true
+      if(lobbies[ioEvent.lobbyId].players[socket.id]){
+        // otherwise kill their player in this game
+        lobbies[ioEvent.lobbyId].players[socket.id].isDead       = true
+        lobbies[ioEvent.lobbyId].players[socket.id].disconnected = true
+      }
       // and leave the room
       socket.leave(ioEvent.lobbyId)
     }
