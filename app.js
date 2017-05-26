@@ -398,6 +398,9 @@ io.sockets.on('connection', function(socket) {
 
   // if the user wants to leave, reset their client state and kill/delete their user
   socket.on('leaveLobby', function(ioEvent){
+    if(!lobbies[ioEvent.lobbyId]){
+      return
+    }
     socket.emit('gameUpdate', {
       user:               {},
       lobbyId:            '',
