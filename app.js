@@ -40,11 +40,14 @@ const startDay = function(lobbyId){
 const startDawn = function(lobbyId, message){
   // clearInterval(lobbies[lobbyId].nightSoundsInterval)
   message = message ? message : ''
-  clearTimeout(lobbies[lobbyId]['dayTimer'])
+  clearTimeout(lobbies[lobbyId].dayTimer)
+  // tell everyone who died
+  let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
+  io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
   // no point in dawn if no prophets are alive
   let prophetCount = 0
-  for(let playerId in lobbies[lobbyId]['players']){
-    let player = lobbies[lobbyId]['players'][playerId]
+  for(let playerId in lobbies[lobbyId].players){
+    let player = lobbies[lobbyId].players[playerId]
     if(player['role'] === 'prophet' && !player['isDead']){
       prophetCount ++
     }
@@ -55,27 +58,27 @@ const startDawn = function(lobbyId, message){
     return
   }
   let instructionsMessage = `${message}A prophet gazes into the fire. Who do they see?`
-  lobbies[lobbyId]['gameSettings']['time'] = 'dawn'
-  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
-  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
-  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+  lobbies[lobbyId].gameSettings['time'] = 'dawn'
+  lobbies[lobbyId].gameSettings['instructions'] = instructionsMessage
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
+  lobbies[lobbyId].dayTimer = setTimeout(function(){
     startDay.call(this, lobbyId)
   }, 30000)
 }
 
 // night is for whitches to kill
 const startNight = function(lobbyId){
-  clearTimeout(lobbies[lobbyId]['dayTimer'])
+  clearTimeout(lobbies[lobbyId].dayTimer)
   // reset dem killBotes bb
   for(let playerId in lobbies[lobbyId].players){
-    lobbies[lobbyId].players[playerId].killVote = null
+    lobbies[lobbyId].players[playerId].voteFor  = null
     lobbies[lobbyId].players[playerId].skip     = false
   }
   // send the players back with reset killVotes
   let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
   io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
   // reset the timer
-  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+  lobbies[lobbyId].dayTimer = setTimeout(function(){
     startDawn.call(this, lobbyId)
   }, 30000)
   let instructionsMessage = 'Something stirs in the night.'
@@ -83,9 +86,9 @@ const startNight = function(lobbyId){
   lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
 
-  let playerIds       = Object.keys(lobbies[lobbyId].players)
-    playerCount       = playerIds.length,
-    audioNoisesLength = audioNoises.length
+  // let playerIds       = Object.keys(lobbies[lobbyId].players)
+  //   playerCount       = playerIds.length,
+  //   audioNoisesLength = audioNoises.length
   // audio isnt allowed on mobile :(
   // lobbies[lobbyId].nightSoundsInterval = setInterval(function(){
   //   let playerId = playerIds[Math.floor(Math.random() * playerCount)],
@@ -256,10 +259,22 @@ io.sockets.on('connection', function(socket) {
       return
     }
     // has it started?
-    if(lobbies[ioEvent.lobbyId]['gameSettings'].started){
+    if(lobbies[ioEvent.lobbyId].gameSettings.started){
       socket.emit('errorResponse', {error: "That village is pointing fingers and murmering currently. Try again when the monster is gone."})
       return
     }
+    // is their name taken?
+    let nameTaken = false
+    for(playerId in lobbies[ioEvent.lobbyId].players){
+      if(lobbies[ioEvent.lobbyId].players[playerId] === ioEvent.username){
+        nameTaken = true
+      }
+    }
+    if(nameTaken){
+      socket.emit('errorResponse', {error: "There is already a villager here by that name. Are you called something else?"})
+      return
+    }
+
     // TODO condence into add player method
     socket.join(ioEvent.lobbyId)
     let freshPlayer = new Player(socket.id, false, false, 'villager', false, ioEvent.username)
@@ -302,10 +317,6 @@ io.sockets.on('connection', function(socket) {
       }
       return
     }
-    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
-    io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
-    // experimenting with night always lasting 30 seconds
-    startDawn.call(this, ioEvent.lobbyId)
   })
 
   socket.on('submitVote', function(ioEvent){
@@ -453,23 +464,35 @@ io.sockets.on('connection', function(socket) {
   socket.on('reveal', function(ioEvent){
     self = this
     let role = lobbies[ioEvent.lobbyId].players[ioEvent.user].role
-    setTimeout(function(){
-      if(lobbies[ioEvent.lobbyId].gameSettings.time === 'dawn'){
-        clearTimeout(lobbies[ioEvent.lobbyId].dayTimer)
-        startDay.call(self, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
-      }
-    }, 4000)
     // emit only to this connected socket, not everyone else
     let castSucceeded = rng(0.7),
       message         = castSucceeded ? role : 'Failed!',
-      messageClass    = castSucceeded ? 'success' : 'fail'
-    socket.emit('notification', {notification: message, messageClass: messageClass})
+      messageClass    = castSucceeded ? 'success' : 'fail',
+      publicMessage   = castSucceeded ? 'The prophet sees a face in the fire.' : 'The prophet gazes, yet sees nothing.';
+    
+    for(playerId in lobbies[ioEvent.lobbyId].players){
+      // send the notification if they are the prophet
+      if(playerId === socket.id){
+        socket.emit('notification', {notification: message, messageClass: messageClass})
+      }
+      // send the news to everyone
+      socket.emit('gameUpdate', {instructions: publicMessage})
+    }
   })
 
   socket.on('ready', function(ioEvent){
     lobbies[ioEvent.lobbyId].gameSettings.started = true
     lobbies[ioEvent.lobbyId].gameSettings.time    = 'dawn'
     lobbies[ioEvent.lobbyId].gameSettings.winner  = null
+    // reset votes
+    for(let playerId in lobbies[lobbyId].players){
+      lobbies[lobbyId].players[playerId].voteFor  = null
+      lobbies[lobbyId].players[playerId].skip     = false
+    }
+    // send the players back with reset killVotes
+    let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
+    io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
+    // send the reset game settings
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
     removeDisconnectedPlayers.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
@@ -480,24 +503,27 @@ io.sockets.on('connection', function(socket) {
     console.log('A user disconnected');
     // set disconnected flag for every lobby the user is in
     for(let room in socket.rooms){
-      lobbies[room]['players'][socket.id]['disconnected'] = true
       socket.leave(room)
       /*
         is anyone left in this lobby?
         lets set a 30 second timer after a user disconnects to check if a room is empty
         if it's still empty after they have had time to reconnect, delete the room
       */
-      setTimeout(function(){
-        let lobbyEmpty = true
-        for(var playerId in lobbies[room]['players']){
-          if(!lobbies[playerId]['players'][playerId]['disconnected']){
-            lobbyEmpty = false
+      if(lobbies[room]){
+        // set the users disconnected flag in any lobby they are in
+        lobbies[room].players[socket.id].disconnected = true
+        setTimeout(function(){
+          let lobbyEmpty = true
+          for(var playerId in lobbies[room].players){
+            if(!lobbies[playerId].players[playerId].disconnected){
+              lobbyEmpty = false
+            }
           }
-        }
-        if(lobbyEmpty){
-          delete lobbies[room]
-        }
-      }, 30000)
+          if(lobbyEmpty){
+            delete lobbies[room]
+          }
+        }, 30000)
+      }
     }
   })
 

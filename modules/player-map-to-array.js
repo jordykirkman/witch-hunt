@@ -5,17 +5,17 @@ module.exports = function(playerMap) {
   for(let key in playerMap){
     newMap[key] = playerMap[key].asMap()
   }
-  for(let key in newMap){
-    if(newMap[key].voteFor){
+  for(let playerId in newMap){
+    if(newMap[playerId].voteFor){
       // the player this person votes to kill
-      const voteForPlayerId = newMap[key].voteFor
+      const voteForPlayerId = newMap[playerId].voteFor
       // ghostVote and killVote are arrays those hold vote counts
-      const voteType = newMap[key].isDead ? 'ghostVote' : 'killVote'
-      newMap[voteForPlayerId][voteType].push({user: key})
+      const voteType = newMap[playerId].isDead ? 'ghostVote' : 'killVote'
+      newMap[voteForPlayerId][voteType].push({user: playerId})
     }
   }
-  for(let key in newMap){
-    playerArray.push(newMap[key])
+  for(let playerId in newMap){
+    playerArray.push(newMap[playerId])
   }
   return playerArray
 }
