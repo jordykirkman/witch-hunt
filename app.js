@@ -24,7 +24,7 @@ const lobbies = {}
 // day is for people to vote
 const startDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
-  let instructionsMessage = 'Day breaks. The village is uneasy.'
+  let instructionsMessage                    = 'Day breaks. The village is uneasy.'
   lobbies[lobbyId].gameSettings.time         = 'day'
   lobbies[lobbyId].gameSettings.instructions = instructionsMessage
   for(let key in lobbies[lobbyId].players){
@@ -32,8 +32,30 @@ const startDay = function(lobbyId){
   }
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    startNight.call(this, lobbyId)
+    startTrial.call(this, lobbyId)
   }, 60000)
+}
+
+// trial is for people to decide if a person is guilty or not
+const startTrial = function(lobbyId){
+  clearTimeout(lobbies[lobbyId]['dayTimer'])
+  // skip if no one is on trial
+  if(!lobbies[ioEvent.lobbyId].gameSettings.onTrial){
+    startNight.call(this, lobbyId)
+  }
+  let instructionsMessage                    = 'Guilty or innocent?'
+  lobbies[lobbyId].gameSettings.time         = 'trial'
+  lobbies[lobbyId].gameSettings.instructions = instructionsMessage
+  for(let key in lobbies[lobbyId].players){
+    lobbies[lobbyId].players[key].killVote   = null
+  }
+  io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
+  let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
+  io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
+  lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
+  lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
+    startNight.call(this, lobbyId)
+  }, 30000)
 }
 
 // dawn is for prophets to check a role
@@ -69,6 +91,31 @@ const startDawn = function(lobbyId, message){
 // night is for whitches to kill
 const startNight = function(lobbyId){
   clearTimeout(lobbies[lobbyId].dayTimer)
+  // see if there is a trial going and check for win condition before proceeding
+  let playerCount = 0,
+    yesCount      = 0,
+    trialUserId   = lobbies[ioEvent.lobbyId].gameSettings.onTrial
+  if(trialUserId){
+    for(let playerId in lobbies[lobbyId]['players']){
+      if(!lobbies[lobbyId].players[playerId].isDead){
+        playerCount += 1
+        if(lobbies[lobbyId].players[playerId].trialVote){
+          yesCount += 1
+        }
+        // reset it once we have the count
+        lobbies[lobbyId].players[playerId].trialVote = false
+      }
+      if(yesCount >= (playerCount / 2)){
+        lobbies[lobbyId].players[trialUserId].isDead = true
+        let gameOver = checkWinCondition.call(this, lobbies[ioEvent.lobbyId]['players'], ioEvent.lobbyId)
+        if(gameOver){
+          endGame.call(this, gameOver)
+          return
+        }
+      }
+    }
+    lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
+  }
   // reset dem killBotes bb
   for(let playerId in lobbies[lobbyId].players){
     lobbies[lobbyId].players[playerId].voteFor  = null
@@ -193,6 +240,19 @@ const checkWinCondition = function(playerMap, lobbyId){
   return false
 }
 
+const endGame = function(winner){
+  lobbies[ioEvent.lobbyId]['gameSettings'].started = false
+  if(winner === 'witches'){
+    lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
+    io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
+    io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false, instructions: null})
+  } else {
+    lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
+    io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
+    io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false, instructions: null})
+  }
+}
+
 io.sockets.on('connection', function(socket) {
   console.log(`a user connected ${socket.id}`)
 
@@ -294,29 +354,30 @@ io.sockets.on('connection', function(socket) {
     // if the cast failed send a notification to this socket only
     if(!castSucceeded){
       let username = lobbies[ioEvent.lobbyId]['players'][ioEvent.user].username
-      socket.emit('notification', {notification: `${username} survived`, messageClass: 'failed'})
-      socket.to(ioEvent.user).emit('notification', {notification: 'you survived', messageClass: 'failed'})
+      lobbies[ioEvent.lobbyId].gameSettings.notification = `${username} was nearly killed.`
+      // socket.emit('notification', {notification: `${username} survived`, messageClass: 'failed'})
+      // TODO emit to all other users a different wording of this message
+      // socket.to(ioEvent.user).emit('notification', {notification: 'you survived', messageClass: 'failed'})
       // lobbies[ioEvent.lobbyId].gameSettings.notification = `${username} was nearly killed.`
       // TODO: add rng flavor here to the attack type depending on village location
-      startDawn.call(this, ioEvent.lobbyId, `${username} was nearly killed.`)
+      // startDawn.call(this, ioEvent.lobbyId, `${username} was nearly killed.`)
       return
     }
     lobbies[ioEvent.lobbyId]['players'][ioEvent.user]['isDead'] = true
     // check win condition if a player is killed
     let gameOver = checkWinCondition.call(this, lobbies[ioEvent.lobbyId]['players'], ioEvent.lobbyId)
     if(gameOver){
-      lobbies[ioEvent.lobbyId]['gameSettings'].started = false
-      if(gameOver === 'witches'){
-        lobbies[ioEvent.lobbyId].gameSettings.winner = 'witches'
-        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Witches triumph', messageClass: 'witch'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'witches', started: false, instructions: null})
-      } else {
-        lobbies[ioEvent.lobbyId].gameSettings.winner = 'villagers'
-        io.sockets.in(ioEvent.lobbyId).emit('notification', {notification: 'Villagers defend their homeland', messageClass: 'villager'})
-        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {winner: 'villagers', started: false, instructions: null})
-      }
+      endGame.call(this, gameOver)
+    }
+  })
+
+  socket.on('trialVote', function(ioEvent){
+    if(lobbies[ioEvent.lobbyId].players[ioEvent.from].isDead){
       return
     }
+    lobbies[ioEvent.lobbyId].players[ioEvent.from].trialVote = ioEvent.trialVote
+    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+    io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
   })
 
   socket.on('submitVote', function(ioEvent){
@@ -353,6 +414,7 @@ io.sockets.on('connection', function(socket) {
       if(!lobbies[ioEvent.lobbyId]['players'][key]['isDead'] && !lobbies[ioEvent.lobbyId]['players'][key]['disconnected']){
         playerCount ++
         if(lobbies[ioEvent.lobbyId]['players'][key]['voteFor']){
+          // add the player id being voted for as a key in playerVotes
           if(playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']]){
             playerVotes[lobbies[ioEvent.lobbyId]['players'][key]['voteFor']] ++
           } else {
@@ -365,14 +427,12 @@ io.sockets.on('connection', function(socket) {
         skipCount += lobbies[ioEvent.lobbyId]['players'][key]['skip'] ? 1 : 0
       }
     }
-    // if there is a majority vote, kill the player
+    // if there is a majority vote, put the player on trial or kill them
     if(ioEvent.user){
-      for(var key in playerVotes){
-        if(playerVotes[key] > (playerCount / 2)){
-          lobbies[ioEvent.lobbyId]['players'][key]['isDead'] = true
-          let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
-          io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
-          startNight.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
+      for(var playerId in playerVotes){
+        // is there a player id with greater than 50% of the votes?
+        if(playerVotes[playerId] > (playerCount / 2)){
+          lobbies[ioEvent.lobbyId].gameSettings.onTrial = playerId
         }
       }
     }
@@ -484,10 +544,12 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId].gameSettings.started = true
     lobbies[ioEvent.lobbyId].gameSettings.time    = 'dawn'
     lobbies[ioEvent.lobbyId].gameSettings.winner  = null
+    lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
     // reset votes
     for(let playerId in lobbies[lobbyId].players){
-      lobbies[lobbyId].players[playerId].voteFor  = null
-      lobbies[lobbyId].players[playerId].skip     = false
+      lobbies[lobbyId].players[playerId].voteFor    = null
+      lobbies[lobbyId].players[playerId].trialVote  = null
+      lobbies[lobbyId].players[playerId].skip       = false
     }
     // send the players back with reset killVotes
     let playerArray = playerMapToArray(lobbies[lobbyId]['players'])

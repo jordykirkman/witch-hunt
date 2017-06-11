@@ -7,6 +7,7 @@ module.exports = class Player {
     this.skip         = skip;
     this.username     = username;
     this.voteFor      = voteFor;
+    this.trialVote    = null;
     this.disconnected = false;
   }
   asMap() {
@@ -18,6 +19,7 @@ module.exports = class Player {
       skip:       this.skip,
       username:   this.username,
       voteFor:    this.voteFor,
+      trialVote:  this.trialVote,
       killVote:   [],
       ghostVote:  []
     })
