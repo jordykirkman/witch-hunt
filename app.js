@@ -32,7 +32,11 @@ const startDay = function(lobbyId){
   }
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
-    startTrial.call(this, lobbyId)
+    if(lobbies[lobbyId].gameSettings.onTrial){
+      startTrial.call(this, lobbyId)
+      return
+    }
+    startNight.call(this, lobbyId)
   }, 60000)
 }
 
@@ -40,7 +44,7 @@ const startDay = function(lobbyId){
 const startTrial = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
   // skip if no one is on trial
-  if(!lobbies[ioEvent.lobbyId].gameSettings.onTrial){
+  if(!lobbies[lobbyId].gameSettings.onTrial){
     startNight.call(this, lobbyId)
   }
   let instructionsMessage                    = 'Guilty or innocent?'
@@ -50,9 +54,9 @@ const startTrial = function(lobbyId){
     lobbies[lobbyId].players[key].killVote   = null
   }
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId].gameSettings)
-  let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
-  io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
-  lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
+  let playerArray = playerMapToArray(lobbies[lobbyId].players)
+  io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
+  lobbies[lobbyId].gameSettings.onTrial = null
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     startNight.call(this, lobbyId)
   }, 30000)
@@ -64,8 +68,8 @@ const startDawn = function(lobbyId, message){
   message = message ? message : ''
   clearTimeout(lobbies[lobbyId].dayTimer)
   // tell everyone who died
-  let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
-  io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
+  let playerArray = playerMapToArray(lobbies[lobbyId].players)
+  io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
   // no point in dawn if no prophets are alive
   let prophetCount = 0
   for(let playerId in lobbies[lobbyId].players){
@@ -94,7 +98,7 @@ const startNight = function(lobbyId){
   // see if there is a trial going and check for win condition before proceeding
   let playerCount = 0,
     yesCount      = 0,
-    trialUserId   = lobbies[ioEvent.lobbyId].gameSettings.onTrial
+    trialUserId   = lobbies[lobbyId].gameSettings.onTrial
   if(trialUserId){
     for(let playerId in lobbies[lobbyId]['players']){
       if(!lobbies[lobbyId].players[playerId].isDead){
@@ -107,14 +111,14 @@ const startNight = function(lobbyId){
       }
       if(yesCount >= (playerCount / 2)){
         lobbies[lobbyId].players[trialUserId].isDead = true
-        let gameOver = checkWinCondition.call(this, lobbies[ioEvent.lobbyId]['players'], ioEvent.lobbyId)
+        let gameOver = checkWinCondition.call(this, lobbies[lobbyId]['players'], lobbyId)
         if(gameOver){
           endGame.call(this, gameOver)
           return
         }
       }
     }
-    lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
+    lobbies[lobbyId].gameSettings.onTrial = null
   }
   // reset dem killBotes bb
   for(let playerId in lobbies[lobbyId].players){
@@ -546,20 +550,30 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId].gameSettings.winner  = null
     lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
     // reset votes
-    for(let playerId in lobbies[lobbyId].players){
-      lobbies[lobbyId].players[playerId].voteFor    = null
-      lobbies[lobbyId].players[playerId].trialVote  = null
-      lobbies[lobbyId].players[playerId].skip       = false
+    for(let playerId in lobbies[ioEvent.lobbyId].players){
+      lobbies[ioEvent.lobbyId].players[playerId].voteFor    = null
+      lobbies[ioEvent.lobbyId].players[playerId].trialVote  = null
+      lobbies[ioEvent.lobbyId].players[playerId].skip       = false
     }
     // send the players back with reset killVotes
-    let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
-    io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
+    let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+    io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
     // send the reset game settings
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
     removeDisconnectedPlayers.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     assignRoles.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
     showRole.call(this, ioEvent.lobbyId, lobbies[ioEvent.lobbyId])
   })
+
+  // currently just used for last words when hanging
+  socket.on('message', function (ioEvent) {
+    io.sockets.in(ioEvent.lobbyId).emit('message', {message: ioEvent.message, from: socket.id})
+  });
+
+  // just typing indicators
+  socket.on('typing', function (ioEvent) {
+    io.sockets.in(ioEvent.lobbyId).emit('typing', {from: socket.id})
+  });
 
   socket.on('disconnect', function () {
     console.log('A user disconnected');
