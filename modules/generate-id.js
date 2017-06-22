@@ -1,6 +1,6 @@
 const nid = require('nid'),
-  flavor = ['abandoned', 'ancient', 'forgotten', 'misty', 'restless'],
-  nouns = ['caves', 'bog', 'ruins']
+  flavor = ['abandoned', 'ancient', 'forgotten', 'lost', 'misty', 'restless', 'silent'],
+  nouns = ['caves', 'bog', 'hills', 'ruins']
 // const nouns = ['bog', 'forest', 'hills', 'marshes', 'cliffs']
 
 module.exports = function() {
