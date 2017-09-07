@@ -10,8 +10,10 @@ module.exports = function(playerMap) {
       // the player this person votes to kill
       const voteForPlayerId = newMap[playerId].voteFor
       // ghostVote and killVote are arrays those hold vote counts
-      const voteType = newMap[playerId].isDead ? 'ghostVote' : 'killVote'
-      newMap[voteForPlayerId][voteType].push({user: playerId})
+      if(newMap[voteForPlayerId]){
+        const voteType = newMap[playerId].isDead ? 'ghostVote' : 'killVote'
+        newMap[voteForPlayerId][voteType].push({user: playerId})
+      }
     }
   }
   for(let playerId in newMap){

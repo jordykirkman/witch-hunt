@@ -80,6 +80,7 @@ const startTrial = function(lobbyId){
   let instructionsMessage                    = 'Guilty or innocent?'
   lobbies[lobbyId].gameSettings.time         = 'trial'
   lobbies[lobbyId].gameSettings.instructions = instructionsMessage
+  lobbies[lobbyId].gameSettings.messages     = []
   for(let key in lobbies[lobbyId].players){
     lobbies[lobbyId].players[key].trialVote   = null
   }
@@ -96,9 +97,9 @@ const startNight = function(lobbyId){
   clearTimeout(lobbies[lobbyId].dayTimer)
   // see if there is a trial going and check for win condition before proceeding
   let playerCount = 0,
-    yesCount      = 0,
-    trialUserId   = lobbies[lobbyId].gameSettings.onTrial.id
-  if(trialUserId){
+    yesCount      = 0
+  if(lobbies[lobbyId].gameSettings.onTrial){
+    let trialUserId   = lobbies[lobbyId].gameSettings.onTrial.id
     for(let playerId in lobbies[lobbyId]['players']){
       if(!lobbies[lobbyId].players[playerId].isDead){
         playerCount += 1
@@ -267,6 +268,16 @@ io.sockets.on('connection', function(socket) {
   console.log(`a user connected ${socket.id}`)
 
   socket.on('create', function(ioEvent){
+    // no blank names
+    if(!ioEvent.username){
+      socket.emit({error: "But what should we call ye?"})
+      return
+    }
+    // name length cap
+    if(ioEvent.username.length >= 20){
+      socket.emit({error: "We are a simple village and your name is complicated. Try something shorter."})
+      return
+    }
     const newLobbyId = generateId()
     console.log("socket id on create" + socket.id)
     let freshPlayer = new Player(socket.id, true, false, 'villager', false, ioEvent.username)
@@ -316,6 +327,15 @@ io.sockets.on('connection', function(socket) {
     delete lobbies[ioEvent.lobbyId].players[ioEvent.userId]
     // send the joined event which tells the client to set a session token
     socket.emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
+    // update any vote references to the reconnected players id
+    for(let key in lobbies[ioEvent.lobbyId]['players']){
+      if(lobbies[ioEvent.lobbyId].players[key].voteFor === oldPlayerRef.id){
+        lobbies[ioEvent.lobbyId].players[key].voteFor = socket.id
+      }
+      if(lobbies[ioEvent.lobbyId].players[key].trialVote === oldPlayerRef.id){
+        lobbies[ioEvent.lobbyId].players[key].trialVote = socket.id
+      }
+    }
     // send a gameUpdate event to set their local game state to match the lobby settings
     socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
     let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId].players)
@@ -323,6 +343,11 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('join', function(ioEvent){
+    // no blank names
+    if(!ioEvent.username){
+      socket.emit({error: "But what should we call ye?"})
+      return
+    }
     // is there a lobby?
     if(!lobbies[ioEvent.lobbyId]){
       socket.emit('errorResponse', {error: "Could not find that village in the seeing stone."})
@@ -342,6 +367,11 @@ io.sockets.on('connection', function(socket) {
     }
     if(nameTaken){
       socket.emit('errorResponse', {error: "There is already a villager here by that name. Are you called something else?"})
+      return
+    }
+    // name length cap
+    if(ioEvent.username.length >= 20){
+      socket.emit({error: "We are a simple village and your name is complicated. Try something shorter."})
       return
     }
 
@@ -444,6 +474,7 @@ io.sockets.on('connection', function(socket) {
       // is there a player id with greater than 50% of the votes?
       if(playerVotes[playerId] > (playerCount / 2)){
         lobbies[ioEvent.lobbyId].gameSettings.onTrial = lobbies[ioEvent.lobbyId].players[playerId]
+        io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
       }
     }
 
@@ -499,8 +530,8 @@ io.sockets.on('connection', function(socket) {
       socket.leave(ioEvent.lobbyId)
       // check if there are any connected clients in the lobby
       let lobbyEmpty = true
-      for(var playerId in lobbies[room].players){
-        if(!lobbies[playerId].players[playerId].disconnected){
+      for(var playerId in lobbies[ioEvent.lobbyId].players){
+        if(!lobbies[ioEvent.lobbyId].players[playerId].disconnected){
           lobbyEmpty = false
         }
       }
@@ -532,6 +563,12 @@ io.sockets.on('connection', function(socket) {
       // send the news to everyone
       socket.emit('gameUpdate', {instructions: publicMessage})
     }
+
+    clearTimeout(lobbies[ioEvent.lobbyId].dayTimer)
+    lobbies[ioEvent.lobbyId].dayTimer = setTimeout(function(){
+      startDay.call(this, ioEvent.lobbyId)
+    }, 5000)
+
   })
 
   socket.on('ready', function(ioEvent){
@@ -539,6 +576,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[ioEvent.lobbyId].gameSettings.time    = 'dawn'
     lobbies[ioEvent.lobbyId].gameSettings.winner  = null
     lobbies[ioEvent.lobbyId].gameSettings.onTrial = null
+    lobbies[ioEvent.lobbyId].gameSettings.messages = []
     // reset votes
     for(let playerId in lobbies[ioEvent.lobbyId].players){
       lobbies[ioEvent.lobbyId].players[playerId].voteFor    = null
@@ -557,6 +595,7 @@ io.sockets.on('connection', function(socket) {
 
   // currently just used for last words when hanging
   socket.on('message', function (ioEvent) {
+    lobbies[ioEvent.lobbyId].gameSettings.messages.push(ioEvent.message)
     io.sockets.in(ioEvent.lobbyId).emit('message', {message: ioEvent.message, from: socket.id})
   });
 
