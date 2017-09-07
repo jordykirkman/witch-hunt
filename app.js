@@ -270,12 +270,12 @@ io.sockets.on('connection', function(socket) {
   socket.on('create', function(ioEvent){
     // no blank names
     if(!ioEvent.username){
-      socket.emit({error: "But what should we call ye?"})
+      socket.emit('errorResponse', {error: "But what should we call ye?"})
       return
     }
     // name length cap
     if(ioEvent.username.length >= 20){
-      socket.emit({error: "We are a simple village and your name is complicated. Try something shorter."})
+      socket.emit('errorResponse', {error: "We are a simple village and your name is complicated. Try something shorter."})
       return
     }
     const newLobbyId = generateId()
@@ -345,17 +345,17 @@ io.sockets.on('connection', function(socket) {
   socket.on('join', function(ioEvent){
     // no blank names
     if(!ioEvent.username){
-      socket.emit({error: "But what should we call ye?"})
+      socket.emit('errorResponse', {error: "But what should we call ye?"})
       return
     }
     // is there a lobby?
     if(!lobbies[ioEvent.lobbyId]){
-      socket.emit('errorResponse', {error: "Could not find that village in the seeing stone."})
+      socket.emit('errorResponse', {error: "Could not find that village."})
       return
     }
     // has it started?
     if(lobbies[ioEvent.lobbyId].gameSettings.started){
-      socket.emit('errorResponse', {error: "That village is pointing fingers and murmering currently. Try again when the monster is gone."})
+      socket.emit('errorResponse', {error: "That village is in a game. Join when it's done."})
       return
     }
     // is their name taken?
