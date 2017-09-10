@@ -371,7 +371,7 @@ io.sockets.on('connection', function(socket) {
     }
     // name length cap
     if(ioEvent.username.length >= 20){
-      socket.emit({error: "We are a simple village and your name is complicated. Try something shorter."})
+      socket.emit('errorResponse', {error: "We are a simple village and your name is complicated. Try something shorter."})
       return
     }
 
