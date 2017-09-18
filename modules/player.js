@@ -1,8 +1,9 @@
 module.exports = class Player {
-  constructor(id, isCreator, isDead, role, skip, username, voteFor) {
+  constructor(id, username, role, isCreator, isDead, skip, voteFor, isMarked) {
     this.id           = id;
     this.isCreator    = isCreator;
     this.isDead       = isDead;
+    this.isMarked     = isMarked,
     this.role         = role;
     this.skip         = skip;
     this.username     = username;
@@ -15,6 +16,7 @@ module.exports = class Player {
       id:         this.id,
       isCreator:  this.isCreator,
       isDead:     this.isDead,
+      isMarked:   this.isMarked,
       role:       this.role,
       skip:       this.skip,
       username:   this.username,
