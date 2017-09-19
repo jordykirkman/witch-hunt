@@ -74,9 +74,24 @@ const startDay = function(lobbyId){
     let userMarked = lobbies[lobbyId].gameSettings.markedThisTurn[key]
     lobbies[lobbyId].players[userMarked].isMarked = true
   }
+  let playerArray = playerMapToArray(lobbies[lobbyId].players)
+  io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
   // reset lists
   lobbies[lobbyId].gameSettings.watchList       = {}
   lobbies[lobbyId].gameSettings.markedThisTurn  = {}
+  // did someone win?
+  let gameOver = checkWinCondition.call(this, lobbies[lobbyId]['players'], lobbyId)
+  if(gameOver){
+    for(let key in lobbies[lobbyId].players){
+      if(lobbies[lobbyId].players[key].isMarked){
+        lobbies[lobbyId].players[key].isDead = true
+      }
+    }
+    let playerArray = playerMapToArray(lobbies[lobbyId].players)
+    io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
+    endGame.call(this, gameOver, lobbyId)
+    return
+  }
   // send day message
   let instructionsMessage                       = 'Day breaks. The village is uneasy.'
   lobbies[lobbyId].gameSettings.time            = 'day'
@@ -237,9 +252,9 @@ const assignRoles = function(lobbyId){
     assignWitches.call(this)
   }
   // assign vilagers
-  while(assignedProphets < desiredProphets){
-    assignProphets.call(this)
-  }
+  // while(assignedProphets < desiredProphets){
+  //   assignProphets.call(this)
+  // }
 
   let playerArray = playerMapToArray(lobbies[lobbyId]['players'])
   io.sockets.in(lobbyId).emit('gameUpdate', {players: playerArray})
@@ -518,7 +533,7 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('watch', function(ioEvent){
-    lobbies[ioEvent.lobbyId].gameSettings.watchList[socket] = ioEvent.user;
+    lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] = ioEvent.user;
   })
 
   // if the user wants to leave, reset their client state and kill/delete their user
@@ -602,7 +617,7 @@ io.sockets.on('connection', function(socket) {
 
   socket.on('ready', function(ioEvent){
     lobbies[ioEvent.lobbyId].gameSettings.started         = true
-    lobbies[ioEvent.lobbyId].gameSettings.time            = 'dawn'
+    lobbies[ioEvent.lobbyId].gameSettings.time            = 'day'
     lobbies[ioEvent.lobbyId].gameSettings.winner          = null
     lobbies[ioEvent.lobbyId].gameSettings.onTrial         = null
     lobbies[ioEvent.lobbyId].gameSettings.messages        = []
