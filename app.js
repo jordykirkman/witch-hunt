@@ -1,20 +1,20 @@
-const express           = require('express')
-const path              = require('path')
-const nid               = require('nid')
-const generateId        = require('./modules/generate-id')
-const generateName      = require('./modules/generate-name')
-const Player            = require('./modules/player')
-const playerMapToArray  = require('./modules/player-map-to-array')
-const rng               = require('./modules/rng')
-const app               = express()
-const http              = require('http').Server(app)
-const io                = require('socket.io')(http)
-const PORT              = process.env.WITCH_HUNT_PORT || 80
+const express       = require('express'),
+  path              = require('path'),
+  nid               = require('nid'),
+  generateId        = require('./modules/generate-id'),
+  generateName      = require('./modules/generate-name'),
+  Player            = require('./modules/player'),
+  playerMapToArray  = require('./modules/player-map-to-array'),
+  rng               = require('./modules/rng'),
+  app               = express(),
+  http              = require('http').Server(app),
+  io                = require('socket.io')(http),
+  PORT              = process.env.WITCH_HUNT_PORT || 80,
 // TODO make a dialogue file
-const prophetText       = "Select someone to reveal thier secrets."
-const witchText         = "Select who shouldn't live any longer."
-const dayText           = "Select someone who is guilty or choose to skip today."
-const audioNoises       = ['twig_snap', 'door_creak', 'cup_drop', 'branch_break', 'glass_drop']
+  villagerText      = "Choose someone to watch or stay home.",
+  witchText         = "Choose someone to mark.",
+  dayText           = "Choose someone who is guilty or skip.",
+  audioNoises       = ['twig_snap', 'door_creak', 'cup_drop', 'branch_break', 'glass_drop']
 
 app.enable('trust proxy')
 app.use(express.static(path.join(__dirname, '../witch-hunt-client/build')))
@@ -94,9 +94,7 @@ const startDay = function(lobbyId){
     return
   }
   // send day message
-  let instructionsMessage                       = 'Day breaks. The village is uneasy.'
   lobbies[lobbyId].gameSettings.time            = 'day'
-  lobbies[lobbyId].gameSettings.instructions    = instructionsMessage
   // reset kill votes
   for(let key in lobbies[lobbyId].players){
     lobbies[lobbyId].players[key].killVote      = null
@@ -110,6 +108,7 @@ const startDay = function(lobbyId){
     }
     startNight.call(this, lobbyId)
   }, 45000)
+  io.sockets.in(lobbyId).emit('setTimer', {timer: 45})
 }
 
 // trial is for people to decide if a person is guilty or not
@@ -119,9 +118,7 @@ const startTrial = function(lobbyId){
   if(!lobbies[lobbyId].gameSettings.onTrial){
     startNight.call(this, lobbyId)
   }
-  let instructionsMessage                    = 'Guilty or innocent?'
   lobbies[lobbyId].gameSettings.time         = 'trial'
-  lobbies[lobbyId].gameSettings.instructions = instructionsMessage
   lobbies[lobbyId].gameSettings.messages     = []
   for(let key in lobbies[lobbyId].players){
     lobbies[lobbyId].players[key].trialVote   = null
@@ -133,6 +130,7 @@ const startTrial = function(lobbyId){
   lobbies[lobbyId]['dayTimer'] = setTimeout(function(){
     startNight.call(this, lobbyId)
   }, 30000)
+  io.sockets.in(lobbyId).emit('setTimer', {timer: 30})
 }
 
 // night is for witches to kill
@@ -177,10 +175,9 @@ const startNight = function(lobbyId){
   lobbies[lobbyId].dayTimer = setTimeout(function(){
     startDay.call(this, lobbyId)
   }, 30000)
-  let instructionsMessage = 'Something stirs in the night.'
   lobbies[lobbyId]['gameSettings']['time'] = 'night'
-  lobbies[lobbyId]['gameSettings']['instructions'] = instructionsMessage
   io.sockets.in(lobbyId).emit('gameUpdate', lobbies[lobbyId]['gameSettings'])
+  io.sockets.in(lobbyId).emit('setTimer', {timer: 30})
 
   // let playerIds       = Object.keys(lobbies[lobbyId].players)
   //   playerCount       = playerIds.length,
@@ -329,7 +326,6 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId].players                   = {}
     lobbies[newLobbyId].players[socket.id]        = freshPlayer
     lobbies[newLobbyId].gameSettings              = {}
-    lobbies[newLobbyId].gameSettings.prophetText  = prophetText
     lobbies[newLobbyId].gameSettings.witchText    = witchText
     lobbies[newLobbyId].gameSettings.dayText      = dayText
     lobbies[newLobbyId].gameSettings.lobbyId      = newLobbyId
@@ -376,10 +372,10 @@ io.sockets.on('connection', function(socket) {
     io.sockets.to(socket.id).emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
     // update any vote references to the reconnected players id
     for(let key in lobbies[ioEvent.lobbyId]['players']){
-      if(lobbies[ioEvent.lobbyId].players[key].voteFor === oldPlayerRef.id){
+      if(lobbies[ioEvent.lobbyId].players[key].voteFor === ioEvent.userId){
         lobbies[ioEvent.lobbyId].players[key].voteFor = socket.id
       }
-      if(lobbies[ioEvent.lobbyId].players[key].trialVote === oldPlayerRef.id){
+      if(lobbies[ioEvent.lobbyId].players[key].trialVote === ioEvent.userId){
         lobbies[ioEvent.lobbyId].players[key].trialVote = socket.id
       }
     }
