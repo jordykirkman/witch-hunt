@@ -11,7 +11,7 @@ const express       = require('express'),
   io                = require('socket.io')(http),
   PORT              = process.env.WITCH_HUNT_PORT || 80,
 // TODO make a dialogue file
-  villagerText      = "Choose someone to watch or stay home.",
+  villagerText      = "Select someone to spy on (you will be seen as missing) or stay home.",
   witchText         = "Choose someone to mark.",
   dayText           = "Choose someone who is guilty or skip.",
   audioNoises       = ['twig_snap', 'door_creak', 'cup_drop', 'branch_break', 'glass_drop']
@@ -54,20 +54,27 @@ const startDawn = function(lobbyId, message){
 // day is for people to vote
 const startDay = function(lobbyId){
   clearTimeout(lobbies[lobbyId]['dayTimer'])
+  // delete those who failed or skipped
+  for(let watcherId in lobbies[lobbyId].gameSettings.watchList){
+    let castSucceeded = rng(0.8)
+    if(!castSucceeded){
+      delete lobbies[lobbyId].gameSettings.watchList[watcherId]
+      io.sockets.to(watcherId).emit('notification', {notification: 'You hear a scary noise and stay home. (seen as home)'})
+    }
+    if(lobbies[lobbyId].gameSettings.watchList[watcherId] === 'skip'){
+      delete lobbies[lobbyId].gameSettings.watchList[watcherId]
+    }
+  }
   // tell everyone who watches someone if they were home
   for(let watcherId in lobbies[lobbyId].gameSettings.watchList){
     // userWatched is the value(user watched) assigned to watcherId(user watching)
     let userWatchedId = lobbies[lobbyId].gameSettings.watchList[watcherId]
     // did the person you are watching leave the house?
-    let castSucceeded = rng(0.8)
-    if(castSucceeded){
-      if(lobbies[lobbyId].gameSettings.watchList[userWatchedId] || lobbies[lobbyId].gameSettings.markedThisTurn[userWatchedId]){
-        io.sockets.to(watcherId).emit('notification', {notification: `${lobbies[lobbyId].players[userWatchedId].username} was missing`})
-      } else {
-        io.sockets.to(watcherId).emit('notification', {notification: `${lobbies[lobbyId].players[userWatchedId].username} was home`})
-      }
+    let gameSettings = lobbies[lobbyId].gameSettings
+    if(gameSettings.watchList[userWatchedId] || gameSettings.markedThisTurn[userWatchedId]){
+      io.sockets.to(watcherId).emit('notification', {notification: `${lobbies[lobbyId].players[userWatchedId].username} was missing`})
     } else {
-      io.sockets.to(watcherId).emit('notification', {notification: 'You trip on a branch, and fail to see anything'})
+      io.sockets.to(watcherId).emit('notification', {notification: `${lobbies[lobbyId].players[userWatchedId].username} was home`})
     }
   }
   // mark the users who need it
@@ -328,6 +335,7 @@ io.sockets.on('connection', function(socket) {
     lobbies[newLobbyId].gameSettings              = {}
     lobbies[newLobbyId].gameSettings.witchText    = witchText
     lobbies[newLobbyId].gameSettings.dayText      = dayText
+    lobbies[newLobbyId].gameSettings.villagerText = villagerText
     lobbies[newLobbyId].gameSettings.lobbyId      = newLobbyId
     lobbies[newLobbyId].gameSettings.watchList    = {}
     lobbies[newLobbyId].gameSettings.messages     = []
@@ -530,8 +538,22 @@ io.sockets.on('connection', function(socket) {
   })
 
   socket.on('watch', function(ioEvent){
-    lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] = ioEvent.user;
-    io.sockets.to(socket.id).emit('gameUpdate', {watching: ioEvent.user})
+    if(ioEvent.skip){
+      // set vote to null if they skip
+      if(lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] === 'skip'){
+        lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] = null
+      } else {
+        lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id]= 'skip'
+      }
+    } else {
+      // let them cancel or change a vote
+      if(lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] === ioEvent.user){
+        lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] = null
+      } else {
+        lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id] = ioEvent.user
+      }
+    }
+    io.sockets.to(socket.id).emit('gameUpdate', {watching: lobbies[ioEvent.lobbyId].gameSettings.watchList[socket.id]})
   })
 
   // if the user wants to leave, reset their client state and kill/delete their user
