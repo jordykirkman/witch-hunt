@@ -1,9 +1,14 @@
 const Game = require('../classes/game')
 const Player = require('../classes/player')
+const Ai = require('../classes/ai')
 const generateId = require('../modules/generate-id')
 const playerMapToArray = require('../modules/player-map-to-array')
 const nid = require('nid')
 const generateName = require('../modules/generate-name')
+const lobbies = require('../constants/lobbies')
+const elect = require('../socket/elect')
+const vote = require('../socket/vote')
+const kill = require('../socket/kill')
 
 /*
   With a flick of your wrist, a new game appears before you.
@@ -32,7 +37,7 @@ const generateName = require('../modules/generate-name')
   -art credit: Shanaka Dias
 */
 
-module.exports = function(ioEvent, socket, lobbies, io){
+module.exports = function(ioEvent, socket, io){
   // no blank names
   if(!ioEvent.username){
     socket.emit('errorResponse', {error: 'But what should we call ye?'})
@@ -44,7 +49,13 @@ module.exports = function(ioEvent, socket, lobbies, io){
     return
   }
   const newLobbyId = generateId()
-  let freshPlayer = new Player(socket.id, ioEvent.username, 'villager', true),
+  let freshPlayer = new Player(
+      newLobbyId,
+      socket.id,
+      ioEvent.username,
+      'villager',
+      true
+    ),
     players = {}
   players[socket.id] = freshPlayer
   socket.join(newLobbyId)
@@ -53,28 +64,31 @@ module.exports = function(ioEvent, socket, lobbies, io){
     io,
     players
   )
-
-  // lobbies[newLobbyId] = {}
-  // add player to lobby
-  // lobbies[newLobbyId].players                   = {}
-  // lobbies[newLobbyId].players[socket.id]        = freshPlayer
-  // lobbies[newLobbyId].gameSettings              = {}
-  // lobbies[newLobbyId].gameSettings.witchText    = witchText
-  // lobbies[newLobbyId].gameSettings.dayText      = dayText
-  // lobbies[newLobbyId].gameSettings.villagerText = villagerText
-  // lobbies[newLobbyId].gameSettings.lobbyId      = newLobbyId
-  // lobbies[newLobbyId].gameSettings.watchList    = {}
-  // lobbies[newLobbyId].gameSettings.messages     = []
-  // send them back the lobby id
   socket.emit('gameUpdate', lobbies[newLobbyId].gameSettings)
   // send a joined event to this socket so it creates a session
   socket.emit('joined', {lobbyId: newLobbyId, userId: socket.id})
   // add bots
   if(ioEvent.botCount >= 1){
     for(let n = 0; n <= ioEvent.botCount; n++){
-      let botId = nid()
-      let botPlayer = new Player(botId, false, false, 'villager', false, generateName())
-      lobbies[newLobbyId]['players'][botId] = botPlayer
+      let id = nid()
+      // gameId, id, username, role, isCreator, ai, isDead, skip, voteFor, isMarked, events
+      let botPlayer = new Ai(
+        newLobbyId,
+        id,
+        generateName(),
+        'villager',
+        false,
+        true,
+        null,
+        null,
+        null,
+        null,
+        elect,
+        io,
+        vote,
+        kill
+      )
+      lobbies[newLobbyId].players[id] = botPlayer
     }
   }
   // send the player array

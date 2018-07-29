@@ -1,5 +1,6 @@
 const playerMapToArray = require('../modules/player-map-to-array')
 const Player = require('../classes/player')
+const lobbies = require('../constants/lobbies')
 /*
   You may enter.
   ----------------------------------------------------------
@@ -16,26 +17,27 @@ const Player = require('../classes/player')
             |mt-2_;----.___|
 */
 
-module.exports = function(ioEvent, socket, lobbies, io){
+module.exports = function(ioEvent, socket, io){
+  let game = lobbies[ioEvent.lobbyId]
   // no blank names
   if(!ioEvent.username){
     socket.emit('errorResponse', {error: 'But what should we call ye?'})
     return
   }
   // is there a lobby?
-  if(!lobbies[ioEvent.lobbyId]){
+  if(!game){
     socket.emit('errorResponse', {error: 'Could not find that village.'})
     return
   }
   // has it started?
-  if(lobbies[ioEvent.lobbyId].gameSettings.started){
+  if(game.gameSettings.started){
     socket.emit('errorResponse', {error: 'That village is in a game. Join when it\'s done.'})
     return
   }
   // is their name taken?
   let nameTaken = false
-  for(let playerId in lobbies[ioEvent.lobbyId].players){
-    if(lobbies[ioEvent.lobbyId].players[playerId] === ioEvent.username){
+  for(let playerId in game.players){
+    if(game.players[playerId] === ioEvent.username){
       nameTaken = true
     }
   }
@@ -52,11 +54,11 @@ module.exports = function(ioEvent, socket, lobbies, io){
   // TODO condence into add player method
   socket.join(ioEvent.lobbyId)
   let freshPlayer = new Player(socket.id, ioEvent.username, 'villager')
-  lobbies[ioEvent.lobbyId]['players'][socket.id] = freshPlayer
+  game.addPlayer(freshPlayer)
   // send a joined event to that socket only so it sets a token in the client
   socket.emit('joined', {lobbyId: ioEvent.lobbyId, userId: socket.id})
-  socket.emit('gameUpdate', lobbies[ioEvent.lobbyId].gameSettings)
+  socket.emit('gameUpdate', game.gameSettings)
   // update all the sockets in this lobby with the latest player list
-  let playerArray = playerMapToArray(lobbies[ioEvent.lobbyId]['players'])
+  let playerArray = playerMapToArray(game.players)
   io.sockets.in(ioEvent.lobbyId).emit('gameUpdate', {players: playerArray})
 }

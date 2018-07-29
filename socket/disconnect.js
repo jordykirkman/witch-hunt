@@ -1,3 +1,4 @@
+const lobbies = require('../constants/lobbies')
 /*
   Poof!
   ----------------------------------------------------------
@@ -9,7 +10,7 @@
                     `##'
 */
 
-module.exports = function(socket, lobbies){
+module.exports = function(socket){
   // set disconnected flag for every lobby the user is in
   for(let room in socket.rooms){
     socket.leave(room)

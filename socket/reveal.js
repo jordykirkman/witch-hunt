@@ -1,40 +1,29 @@
 const rng = require('../modules/rng')
+const lobbies = require('../constants/lobbies')
 /*
-  With a flick of your wrist, a new game appears before you.
-  ----------------------------------------------------------
-                             /\
-                            /  \
-                           |    |
-                         --:'''':--
-                           :'_' :
-                           _:"":\___
-            ' '      ____.' :::     '._
-           . *=====<<=)           \    :
-            .  '      '-'-'\_      /'._.'
-                             \====:_ ""
-                            .'     \\
-                           :       :
-                          /   :    \
-                         :   .      '.
-         ,. _        snd :  : :      :
-      '-'    ).          :__:-:__.;--'
-    (        '  )        '-'   '-'
- ( -   .00.   - _
-(    .'  _ )     )
-'-  ()_.\,\,   -
-  ----------------------------------------------------------
-  -art credit: Shanaka Dias
+  You peer into the glass and see...
+               *    .
+        '  +   ___    @    .
+            .-" __"-.   +
+    *      /:.'`__`'.\       '
+        . |:: .'_ `. :|   *
+   @      |:: '._' : :| .
+      +    \:'.__.' :/       '
+            /`-...-'\  '   +
+   '   .   /         \   .    @
+     *     `-.,___,.-'
 */
 
-module.exports = function(ioEvent, socket, lobbies, startDay){
-  let role = lobbies[ioEvent.lobbyId].players[ioEvent.user].role
+module.exports = function(ioEvent, socket, startDay){
+  let game = lobbies[ioEvent.lobbyId]
+  let role = game.players[ioEvent.user].role
   // emit only to this connected socket, not everyone else
   let castSucceeded = rng(0.7),
     message         = castSucceeded ? role : 'Failed!',
     messageClass    = castSucceeded ? 'success' : 'fail',
     publicMessage   = castSucceeded ? 'The prophet sees a face in the fire.' : 'The prophet gazes, yet sees nothing.'
   
-  for(let playerId in lobbies[ioEvent.lobbyId].players){
+  for(let playerId in game.players){
     // send the notification if they are the prophet
     if(playerId === socket.id){
       socket.emit('notification', {notification: message, messageClass: messageClass})
@@ -43,8 +32,8 @@ module.exports = function(ioEvent, socket, lobbies, startDay){
     socket.emit('gameUpdate', {instructions: publicMessage})
   }
 
-  clearTimeout(lobbies[ioEvent.lobbyId].dayTimer)
-  lobbies[ioEvent.lobbyId].dayTimer = setTimeout(function(){
+  clearTimeout(game.dayTimer)
+  game.dayTimer = setTimeout(function(){
     startDay.call(this, ioEvent.lobbyId)
   }, 5000)
 }

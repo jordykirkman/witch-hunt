@@ -1,3 +1,4 @@
+const lobbies = require('../constants/lobbies')
 /*
          ______________
     ()==(              (@==()
@@ -10,12 +11,13 @@
 
 */
 
-module.exports = function(ioEvent, socket, lobbies, io){
-  if(!lobbies[ioEvent.lobbyId].players[socket.id]){
+module.exports = function(ioEvent, socket, io){
+  let game = lobbies[ioEvent.lobbyId]
+  if(!game.players[socket.id]){
     return
   }
-  let messageUsername = lobbies[ioEvent.lobbyId].players[socket.id].username
-  lobbies[ioEvent.lobbyId].gameSettings.messages.push({
+  let messageUsername = game.players[socket.id].username
+  game.gameSettings.messages.push({
     message:  ioEvent.message,
     userId:   socket.id,
     username: messageUsername

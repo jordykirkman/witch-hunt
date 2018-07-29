@@ -1,3 +1,4 @@
+const lobbies = require('../constants/lobbies')
 /*
   You peer into the glass and see...
                *    .
@@ -12,7 +13,7 @@
      *     `-.,___,.-'
 */
 
-module.exports = function(ioEvent, socket, lobbies, io){
+module.exports = function(ioEvent, socket, io){
   const lobby = lobbies[ioEvent.lobbyId]
   if(ioEvent.skip){
     // set vote to null if they skip

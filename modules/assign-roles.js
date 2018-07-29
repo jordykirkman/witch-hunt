@@ -1,10 +1,10 @@
-module.exports = function(lobby){
+const playerMapToArray = require('./player-map-to-array')
+
+module.exports = function(lobby,io){
   let playerKeys      = Object.keys(lobby['players']),
     playerCount       = playerKeys.length,
     desiredWitches    = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
-    desiredProphets   = playerCount / 4 >= 1 ? Math.floor(playerCount / 4) : 1,
     assignedWitches   = 0,
-    assignedProphets  = 0,
     lobbyId           = lobby.lobbyId,
     assignWitches     = function(){
       let key = Math.floor(Math.random() * (0 - playerCount)) + playerCount,
@@ -15,16 +15,6 @@ module.exports = function(lobby){
       }
       assignedWitches ++
       lobby['players'][playerKeys[key]]['role'] = 'witch'
-    },
-    assignProphets    = function(){
-      let key = Math.floor(Math.random() * (0 - playerCount)) + playerCount,
-        role  = lobby['players'][playerKeys[key]]['role']
-      if(role === 'witch' || role === 'prophet'){
-        assignProphets.call(this)
-        return
-      }
-      assignedProphets ++
-      lobby['players'][playerKeys[key]]['role'] = 'prophet'
     }
 
   // reset roles from last game, deaths and votes
