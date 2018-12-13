@@ -11,7 +11,9 @@
   "engines": {
     "node": ">=4.3.2"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "eslint": "^5.0.1"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/jordykirkman/witch-hunt.git"
